@@ -57,7 +57,9 @@ def test_first_event_is_the_prefill_token_without_a_row() -> None:
 def test_plain_streaming_matches_plain_token_for_token_and_row_for_row() -> None:
     reference = generate_plain(FakeBackend(V), [3, 4], 20, frozenset(), CTX, Snap)
 
-    tokens, rows = _collect(generate_plain_streaming(FakeBackend(V), [3, 4], 20, frozenset(), CTX, Snap))
+    tokens, rows = _collect(
+        generate_plain_streaming(FakeBackend(V), [3, 4], 20, frozenset(), CTX, Snap)
+    )
 
     assert tokens == list(reference.tokens)
     assert [_mask(r) for r in rows] == [_mask(r) for r in reference.rows]
@@ -150,7 +152,9 @@ def test_streaming_variants_reject_an_empty_prompt() -> None:
     max_tokens=st.integers(min_value=1, max_value=40),
     eos_token=st.integers(min_value=0, max_value=31),
 )
-def test_property_streaming_equals_non_streaming(step_d, offset_d, prompt, k, max_tokens, eos_token):
+def test_property_streaming_equals_non_streaming(
+    step_d, offset_d, prompt, k, max_tokens, eos_token
+):
     eos = frozenset({eos_token})
     reference = generate_speculative(
         FakeBackend(V), FakeBackend(V, step_d, offset_d), prompt, max_tokens, eos, CTX, Snap, k
