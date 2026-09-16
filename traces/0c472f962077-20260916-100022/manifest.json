@@ -1,0 +1,38 @@
+{
+  "run_id": "0c472f962077",
+  "config": {
+    "arm": "plain",
+    "k": 0,
+    "target": "mlx-community/Llama-3.1-8B-Instruct-4bit",
+    "max_tokens": 128,
+    "prompts": [
+      "code-001",
+      "json-001",
+      "prose-001",
+      "chat-001",
+      "summarize-003",
+      "reason-001",
+      "code-002",
+      "json-002",
+      "prose-002",
+      "chat-003",
+      "summarize-006",
+      "reason-002",
+      "code-003",
+      "json-003",
+      "prose-003",
+      "chat-004",
+      "summarize-007",
+      "reason-004"
+    ],
+    "reps": 1,
+    "warmup": 2
+  },
+  "created_at": "2026-09-16T10:00:28.106011+00:00",
+  "mlx_version": "0.32.2",
+  "mlx_lm_version": "0.31.3",
+  "python_version": "3.12.14",
+  "chip": "Apple M4",
+  "memory_gb": 16.0,
+  "git_sha": "5fb458735c976940e6ab28d435472f936965eae2"
+}

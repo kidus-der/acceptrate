@@ -12,7 +12,6 @@ build/
 htmlcov/
 
 # traces and models — data never goes in git except published samples
-traces/
 models/
 *.safetensors
 *.gguf
