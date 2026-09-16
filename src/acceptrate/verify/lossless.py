@@ -39,7 +39,7 @@ class LosslessReport:
     n_tokens: int
     windows: int
     alpha: float
-    """Accepted / proposed draft tokens over the generation."""
+    """Per-token acceptance over the generation: accepted / examined."""
     first_divergence: int | None
     plain_token: int | None
     spec_token: int | None
@@ -60,10 +60,11 @@ def first_divergence(a: Sequence[int], b: Sequence[int]) -> int | None:
 
 
 def _alpha(rows: Sequence[WindowRow]) -> float:
-    proposed = sum(row[_K] for row in rows)
-    if proposed == 0:
+    """Per-token acceptance: accepted / examined (a rejection is one examined token)."""
+    examined = sum(min(row[_N] + 1, row[_K]) for row in rows)
+    if examined == 0:
         return 0.0
-    return sum(row[_N] for row in rows) / proposed
+    return sum(row[_N] for row in rows) / examined
 
 
 def compare_generation(

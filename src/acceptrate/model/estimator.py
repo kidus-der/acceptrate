@@ -1,7 +1,10 @@
 """Layer 2: the running acceptance estimate.
 
-An exponentially weighted moving average of accepted / proposed per draft
-window. It is the workhorse of the adaptive runtime: it adapts *inside* a
+An exponentially weighted moving average of the per-token acceptance rate:
+accepted / examined per draft window, where a rejection counts as one
+examined token and the drafts after it were never examined. This is the
+alpha the closed-form speedup takes; accepted / proposed is biased low at
+large K. It is the workhorse of the adaptive runtime: it adapts *inside* a
 response as text moves between easy and hard stretches. It is blind for the
 first `warmup_windows`; until then `alpha` is the prior (P6's cold-start
 predictor supplies a better one).
@@ -47,7 +50,9 @@ class AcceptanceEstimator:
             raise ValueError(f"impossible window: {n_accepted} accepted of {k_proposed} proposed")
         if k_proposed == 0:
             return self
-        observed = n_accepted / k_proposed
+        # per-token acceptance: a rejection is one examined token, the rest were never tried
+        examined = n_accepted + 1 if n_accepted < k_proposed else k_proposed
+        observed = n_accepted / examined
         decay = self.decay
         alpha = decay * self.alpha + (1.0 - decay) * observed
         return replace(self, alpha=min(1.0, max(0.0, alpha)), windows=self.windows + 1)

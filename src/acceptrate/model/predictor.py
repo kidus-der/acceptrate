@@ -74,11 +74,19 @@ def prompt_features(text: str) -> npt.NDArray[np.float64]:
 
 
 def alpha_per_prompt(df: pl.DataFrame) -> dict[str, float]:
-    """Pooled accepted / proposed per prompt over every K >= 1 window."""
+    """Pooled per-token acceptance per prompt: accepted / examined over every K >= 1 window.
+
+    examined = n_accepted + 1 when a rejection ended the window, else K.
+    """
+    examined = (
+        pl.when(pl.col("n_accepted") < pl.col("k_proposed"))
+        .then(pl.col("n_accepted") + 1)
+        .otherwise(pl.col("k_proposed"))
+    )
     pooled = (
         df.filter(pl.col("k_proposed") > 0)
         .group_by("prompt_id")
-        .agg(acc=pl.col("n_accepted").sum(), prop=pl.col("k_proposed").sum())
+        .agg(acc=pl.col("n_accepted").sum(), prop=examined.sum())
         .filter(pl.col("prop") > 0)
     )
     return {row[0]: float(row[1]) / float(row[2]) for row in pooled.iter_rows()}
