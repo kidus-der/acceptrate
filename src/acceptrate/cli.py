@@ -26,6 +26,11 @@ app.add_typer(models_app, name="models", help="Pull and inspect model weights.")
 app.add_typer(bench_app, name="bench", help="The research harness. One progress line, no live view")
 verify_app = typer.Typer(no_args_is_help=True)
 app.add_typer(verify_app, name="verify", help="Losslessness gates.")
+from acceptrate.analysis.cli import analysis_app  # noqa: E402
+
+app.add_typer(
+    analysis_app, name="analysis", help="P3 gate, per-cell metrics, the P4 fit and figures."
+)
 
 SMOKE_PROMPT = "Write a short Python function that reverses a string, then explain it."
 SMOKE_TOKENS = 128
