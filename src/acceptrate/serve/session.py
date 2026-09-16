@@ -15,6 +15,7 @@ class's contract.
 from __future__ import annotations
 
 import threading
+import weakref
 from collections import deque
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
@@ -127,9 +128,28 @@ class Session:
         except BaseException:
             self._running.release()
             raise
-        return self._run(prompt, max_tokens, k)
+        release = self._release_once()
+        events = self._run(prompt, max_tokens, k, release)
+        # An unstarted generator's finally never runs on close() or GC, so the
+        # release is also attached to the generator's lifetime.
+        weakref.finalize(events, release)
+        return events
 
-    def _run(self, prompt: list[int], max_tokens: int, k: int) -> Iterator[Event]:
+    def _release_once(self) -> Callable[[], None]:
+        """One-shot end-of-generation: safe from the generator's finally and from GC."""
+        once = threading.Lock()
+
+        def release() -> None:
+            if not once.acquire(blocking=False):
+                return
+            self._end()
+            self._running.release()
+
+        return release
+
+    def _run(
+        self, prompt: list[int], max_tokens: int, k: int, release: Callable[[], None]
+    ) -> Iterator[Event]:
         eos = self._tokenizer.eos_token_ids
         decode = self._tokenizer.decode
         try:
@@ -145,8 +165,7 @@ class Session:
             finish = FINISH_STOP if last_token in eos else FINISH_LENGTH
             yield Event(flush(detok, decode), (), finish)
         finally:
-            self._end()
-            self._running.release()
+            release()
 
     def _engine_stream(self, prompt: list[int], max_tokens: int, k: int) -> Iterator[StreamEvent]:
         eos = self._tokenizer.eos_token_ids

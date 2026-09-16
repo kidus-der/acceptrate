@@ -60,8 +60,8 @@ async def chat_chunks(
     events: Iterator[Event], completion_id: str, created: int, model: str
 ) -> AsyncIterator[str]:
     """OpenAI streaming: a role chunk, content deltas, a finish chunk, then [DONE]."""
-    yield _chunk(completion_id, created, model, Delta(role="assistant", content=""))
     try:
+        yield _chunk(completion_id, created, model, Delta(role="assistant", content=""))
         async for event in iterate_in_thread(events):
             if event.text:
                 yield _chunk(completion_id, created, model, Delta(content=event.text))
