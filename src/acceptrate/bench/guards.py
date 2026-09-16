@@ -118,3 +118,26 @@ def read_swap_in_bytes() -> int:
 
 def sample_page_ins(read_swap_in: Callable[[], int] = read_swap_in_bytes) -> int:
     return page_ins_from_swap_in(read_swap_in(), mmap.PAGESIZE)
+
+
+# --- window verdict -----------------------------------------------------------
+
+
+def dirty_reason(before: GuardSnapshot, after: GuardSnapshot) -> str:
+    """Every reason the window between two snapshots is not a clean sample; "" if clean."""
+    reasons: list[str] = []
+    page_in_delta = after.page_ins - before.page_ins
+    if page_in_delta > 0:
+        reasons.append(f"page_ins advanced by {page_in_delta}")
+    worst_pressure = max(before.mem_pressure, after.mem_pressure)
+    if worst_pressure > 0:
+        reasons.append(f"mem_pressure {worst_pressure}")
+    worst_thermal = max(before.thermal_level, after.thermal_level)
+    if worst_thermal > 0:
+        reasons.append(f"thermal_level {worst_thermal}")
+    return "; ".join(reasons)
+
+
+def is_clean(before: GuardSnapshot, after: GuardSnapshot) -> bool:
+    """True if no page-ins landed and neither end was under pressure or throttled."""
+    return dirty_reason(before, after) == ""
