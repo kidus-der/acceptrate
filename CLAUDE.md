@@ -170,6 +170,23 @@ numbers never come from CI. Tests needing model weights carry `@pytest.mark.mode
 - Do not touch `main` from a worktree; do not touch a worktree branch from
   `main`.
 
+## Commands per phase (composition root: `acceptrate.cli`)
+
+| phase | command | notes |
+|---|---|---|
+| P0 | `acceptrate bench --smoke` | streams 128 tokens from both models |
+| P1 | `acceptrate bench baseline` ×2, then `acceptrate bench compare A B` | run dirs under traces/ |
+| P2 | `acceptrate verify calibrate` once per machine/mlx version, then `acceptrate verify lossless` | near-ties within calibration/noise_floor.json |
+| P3 | `acceptrate bench sweep --draft REPO --ks 0-8` per draft (`--draft lookup` for prompt-lookup) | one parquet cell per arm under traces/sweep |
+| P4 | `acceptrate analysis p3-gate / cells / fit / figures traces/sweep` | mounted from analysis/cli.py |
+| P5 | `acceptrate bench adaptive` | held-out mixed workload, adaptive vs every fixed K |
+| P6 | `acceptrate predictor train` then `acceptrate predictor eval`; `acceptrate serve`; the Go TUI | |
+| P7 | `make reproduce` | regenerates every figure from raw traces |
+
+Long runs (P3 sweep) are launched with `nohup … & disown`, never with a
+tool-managed background task (10-minute cap). Nothing else may load a model
+while a measurement runs.
+
 ## Tooling
 
 - Use `uv run` for everything Python. Never `pip install`.
