@@ -35,6 +35,8 @@ Generator = Callable[[PromptLike, int, str], GenerationOutcome]
 
 Sink = Callable[[str, Sequence[WindowRow]], None]
 Progress = Callable[[int, int], None]
+BeforeJob = Callable[["Job"], None]
+"""Runs before each job; the composition root uses it to wait for a clean machine."""
 
 
 @dataclass(frozen=True)
@@ -93,10 +95,18 @@ def interleaved_schedule(
     return tuple(jobs)
 
 
-def run_plan(plan: RunPlan, arms: Sequence[Arm], sink: Sink, on_progress: Progress) -> RunSummary:
+def run_plan(
+    plan: RunPlan,
+    arms: Sequence[Arm],
+    sink: Sink,
+    on_progress: Progress,
+    before_job: BeforeJob | None = None,
+) -> RunSummary:
     jobs = interleaved_schedule(arms, plan.prompts, plan.reps, plan.warmup)
     per_arm: dict[str, list[tuple[WindowRow, ...]]] = {arm.name: [] for arm in arms}
     for done, job in enumerate(jobs, start=1):
+        if before_job is not None:
+            before_job(job)
         outcome = job.arm.generate(job.prompt, job.rep, job.arm.run_id)
         if not job.warmup:
             sink(job.arm.run_id, outcome.rows)
