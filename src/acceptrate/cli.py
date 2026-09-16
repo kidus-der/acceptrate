@@ -16,7 +16,7 @@ from typing import Annotated
 import typer
 
 from acceptrate.config import DEFAULT_PAIR, ModelPairConfig
-from acceptrate.memory import assess_fit, available_bytes
+from acceptrate.memory import assess_fit, current_pressure_level, total_bytes
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 models_app = typer.Typer(no_args_is_help=True)
@@ -48,7 +48,7 @@ def models_pull() -> None:
 
 
 def _check_fit(pair: ModelPairConfig) -> None:
-    fit = assess_fit(pair, available_bytes())
+    fit = assess_fit(pair, total_bytes(), current_pressure_level())
     if not fit.ok:
         _fail(f"refusing to load: {fit.reason}")
 
