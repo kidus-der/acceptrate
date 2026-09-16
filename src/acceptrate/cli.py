@@ -249,6 +249,100 @@ def bench_sweep(
     typer.echo(f"guard_errors={guard.sample_errors}")
 
 
+DEFAULT_P5_OUT = Path("traces/p5")
+
+
+@bench_app.command("adaptive")
+def bench_adaptive(
+    draft: Annotated[str, typer.Option(help="Draft model repo.")] = DEFAULT_PAIR.draft.repo,  # type: ignore[union-attr]
+    ks: Annotated[str, typer.Option(help="Fixed depths to compare against.")] = "1-8",
+    prompts: Annotated[int, typer.Option(help="Held-out mixed prompts.")] = 36,
+    seed: Annotated[int, typer.Option(help="Seed for the mixed workload.")] = 0,
+    max_tokens: Annotated[int, typer.Option(help="Tokens per generation.")] = 200,
+    reps: Annotated[int, typer.Option(help="Repeats per prompt.")] = 1,
+    warmup: Annotated[int, typer.Option(help="Generations discarded per arm.")] = 2,
+    k_max: Annotated[int, typer.Option(help="Adaptive scheduler's ceiling.")] = 8,
+    out: Annotated[Path, typer.Option(help="Traces root for P5 cells.")] = DEFAULT_P5_OUT,
+) -> None:
+    """P5 gate: adaptive K beats the best single fixed K by >= 5% on the held-out mixed workload."""
+    from acceptrate.backend.mlx_backend import MLXBackend
+    from acceptrate.bench.guards import SystemGuard
+    from acceptrate.bench.p5 import p5_arms, score_p5
+    from acceptrate.bench.runner import Arm, GenerationOutcome, RunPlan, run_plan
+    from acceptrate.bench.sweep import parse_ks
+    from acceptrate.bench.workloads import as_chat_messages, mixed_workload
+    from acceptrate.runtime.adaptive import AdaptiveScheduler, SchedulerConfig, generate_adaptive
+    from acceptrate.runtime.engine import GenerationContext
+    from acceptrate.runtime.speculative import generate_speculative
+    from acceptrate.trace import TraceWriter, build_manifest
+    from acceptrate.weights import cached_spec
+
+    fixed = tuple(k for k in parse_ks(ks) if k >= 1)
+    pair = ModelPairConfig(target=DEFAULT_PAIR.target, draft=cached_spec(draft))
+    _check_fit(pair)
+    chosen = mixed_workload(seed=seed, n=prompts, split="heldout")
+    specs = p5_arms(
+        fixed, pair.target.repo, draft, max_tokens, [p.id for p in chosen], reps, warmup
+    )
+    target = MLXBackend.load(pair.target.repo)
+    draft_backend = MLXBackend.load(draft)
+    tokenizer = target.tokenizer
+    eos = tokenizer.eos_token_ids
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    writers = {
+        spec.run_id: TraceWriter(out / f"{spec.run_id}-{stamp}", build_manifest(spec.config))
+        for spec in specs
+    }
+    sched_cfg = SchedulerConfig(
+        k_min=1, k_max=k_max, prior_alpha=0.6, prior_c=0.16, half_life_windows=4, warmup_windows=0
+    )
+
+    def make_generate(k: int | None):
+        def generate(prompt, rep: int, rid: str) -> GenerationOutcome:
+            tokens = tokenizer.encode_chat(as_chat_messages(prompt))
+            ctx = GenerationContext(rid, prompt.tag, prompt.id, rep)
+            if k is None:
+                result = generate_adaptive(
+                    target, draft_backend, tokens, max_tokens, eos, ctx, lambda: guard.latest,
+                    AdaptiveScheduler(sched_cfg),
+                )  # fmt: skip
+            else:
+                result = generate_speculative(
+                    target, draft_backend, tokens, max_tokens, eos, ctx, lambda: guard.latest, k
+                )
+            return GenerationOutcome(len(result.tokens), result.rows)
+
+        return generate
+
+    arms = tuple(Arm(spec.name, spec.run_id, make_generate(spec.k)) for spec in specs)
+    typer.echo(f"p5 draft={draft} fixed={fixed} heldout prompts={len(chosen)} seed={seed} -> {out}")
+    with SystemGuard() as guard:
+        try:
+            summary = run_plan(
+                RunPlan(prompts=chosen, reps=reps, warmup=warmup),
+                arms,
+                sink=lambda rid, rows: writers[rid].end_generation(rows),
+                on_progress=_progress_line,
+            )
+        finally:
+            for writer in writers.values():
+                writer.close()
+    for spec in specs:
+        arm = summary.arms[spec.name]
+        typer.echo(
+            f"{spec.name:8s} median {arm.tok_s.median:.2f} tok/s IQR [{arm.tok_s.q1:.2f}, "
+            f"{arm.tok_s.q3:.2f}] n={arm.tok_s.n} windows={arm.windows} dirty={arm.dirty_windows}"
+        )
+    verdict = score_p5(summary.arms)
+    typer.echo(
+        f"adaptive {verdict.adaptive_tok_s:.2f} vs best fixed {verdict.best_fixed_name} "
+        f"{verdict.best_fixed_tok_s:.2f}: gain {verdict.gain * 100:+.2f}% (need >= +5%)"
+    )
+    if not verdict.passed:
+        _fail("P5 gate: FAIL")
+    typer.echo("P5 gate: PASS")
+
+
 @bench_app.command("compare")
 def bench_compare(run_a: Path, run_b: Path) -> None:
     """P1 gate: two runs of the same config must agree on median tok/s within 2%."""
