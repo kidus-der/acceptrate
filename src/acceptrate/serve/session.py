@@ -17,7 +17,7 @@ from __future__ import annotations
 import threading
 import weakref
 from collections import deque
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 
 from acceptrate.backend.protocol import Backend, ChatMessage, Tokenizer
@@ -110,12 +110,14 @@ class Session:
         guard: GuardReader = null_guard,
         window_size: int = ROLLING_WINDOW,
         make_scheduler: Callable[[], Scheduler] | None = None,
+        v_by_k: Mapping[int, float] | None = None,
     ) -> None:
         self._target = target
         self._draft = draft
         self._tokenizer = tokenizer
         self._choose_k = choose_k
         self._make_scheduler = make_scheduler
+        self._v_by_k = dict(v_by_k) if v_by_k else None
         self._guard = guard
         self.model = model
         self.draft_name = draft_name
@@ -217,7 +219,13 @@ class Session:
             totals = self._totals
             k = self._k_current
         return compute_stats(
-            window, totals, model=self.model, draft=self.draft_name, busy=self.busy, k_current=k
+            window,
+            totals,
+            model=self.model,
+            draft=self.draft_name,
+            busy=self.busy,
+            k_current=k,
+            v_by_k=self._v_by_k,
         )
 
     def wait_for_change(self, version: int, timeout: float) -> int:

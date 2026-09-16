@@ -651,6 +651,7 @@ def serve(
             make_scheduler=(lambda: AdaptiveScheduler(sched_cfg))
             if (adaptive and use_draft)
             else None,
+            v_by_k=v_by_k,
         )
         mode = "adaptive" if adaptive and use_draft else f"K={k}"
         typer.echo(

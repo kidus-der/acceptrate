@@ -8,11 +8,12 @@ what the runtime sees.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import NamedTuple
 
 from pydantic import BaseModel, ConfigDict
 
+from acceptrate.model.speedup import M4_V_BY_K
 from acceptrate.trace.schema import FIELD_NAMES, WindowRow
 
 EWMA_DECAY = 0.1
@@ -58,6 +59,8 @@ class Stats(BaseModel):
     draft: str | None
     busy: bool
     k_current: int
+    v_by_k: dict[str, float]
+    """Verify pass over K+1 tokens relative to one plain step, per K (docs/gates/P4.md)."""
     alpha_ewma: float | None
     tok_s_recent: float | None
     windows_total: int
@@ -106,6 +109,7 @@ def compute_stats(
     draft: str | None,
     busy: bool,
     k_current: int,
+    v_by_k: Mapping[int, float] | None = None,
     last_n: int = LAST_WINDOWS,
 ) -> Stats:
     recent = window[-last_n:] if last_n > 0 else ()
@@ -114,6 +118,7 @@ def compute_stats(
         draft=draft,
         busy=busy,
         k_current=k_current,
+        v_by_k={str(k): float(v) for k, v in (v_by_k or M4_V_BY_K).items()},
         alpha_ewma=ewma_alpha(window),
         tok_s_recent=tokens_per_second(window),
         windows_total=totals.windows,
