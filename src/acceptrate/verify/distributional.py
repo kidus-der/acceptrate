@@ -38,6 +38,10 @@ from dataclasses import dataclass
 import numpy as np
 import numpy.typing as npt
 
+from acceptrate.backend.protocol import Backend
+from acceptrate.runtime.engine import GenerationContext
+from acceptrate.runtime.sampled import generate_plain_sampled, generate_speculative_sampled
+
 Probs = npt.NDArray[np.float64]
 
 DEFAULT_CONFIDENCE = 0.99
@@ -108,3 +112,72 @@ def tv_bound(
 
 def passes(report: DistributionalReport, bound: float) -> bool:
     return report.tv <= bound
+
+
+# --- driving the sampled runtimes -------------------------------------------
+
+CHECK_CONTEXT = GenerationContext(
+    run_id="distributional", workload_tag="prose", prompt_id="prefix", rep=0
+)
+"""Trace rows from the check are discarded; the context only satisfies the runtime."""
+
+FIRST_VERIFIED_POSITION = 1
+"""Token index 0 comes straight from the target's prefill logits in both paths and
+would compare trivially; index 1 is the first token that passes accept/reject."""
+
+
+@dataclass(frozen=True)
+class _QuietGuard:
+    mem_pressure: int = 0
+    page_ins: int = 0
+    thermal_level: int = 0
+
+
+def _observed_support(plain: Sequence[int], spec: Sequence[int]) -> int:
+    return len(set(plain) | set(spec))
+
+
+def run_distributional_check(
+    target: Backend,
+    draft: Backend,
+    prompt_tokens: Sequence[int],
+    k: int,
+    temperature: float,
+    n_samples: int,
+    seed: int,
+    vocab_size: int,
+    *,
+    position: int = FIRST_VERIFIED_POSITION,
+    confidence: float = DEFAULT_CONFIDENCE,
+) -> tuple[DistributionalReport, float]:
+    """Sample `prompt_tokens` n times plain and n times speculatively; compare token `position`.
+
+    The two paths get independent generators derived from `seed`, so the
+    same seed reproduces the report and the two samples are independent.
+    The bound uses the support observed across both samples.
+    """
+    if n_samples < 1:
+        raise ValueError(f"n_samples must be >= 1, got {n_samples}")
+    if position < 0:
+        raise ValueError(f"position must be >= 0, got {position}")
+    max_tokens = position + 1
+    eos: frozenset[int] = frozenset()
+    rng_plain = np.random.default_rng([seed, 0])
+    rng_spec = np.random.default_rng([seed, 1])
+    plain = [
+        generate_plain_sampled(
+            target, prompt_tokens, max_tokens, eos, CHECK_CONTEXT, _QuietGuard,
+            temperature, rng_plain,
+        ).tokens[position]
+        for _ in range(n_samples)
+    ]  # fmt: skip
+    spec = [
+        generate_speculative_sampled(
+            target, draft, prompt_tokens, max_tokens, eos, CHECK_CONTEXT, _QuietGuard,
+            k, temperature, rng_spec,
+        ).tokens[position]
+        for _ in range(n_samples)
+    ]  # fmt: skip
+    report = compare_next_token_distributions(plain, spec, vocab_size)
+    bound = tv_bound(n_samples, n_samples, _observed_support(plain, spec), confidence)
+    return report, bound
