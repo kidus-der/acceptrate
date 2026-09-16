@@ -84,15 +84,22 @@ Draft fraction and mlx-lm-reported tok/s come from:
 $ uv run python -m tests.reference_mlx_lm
 ```
 
-**Pending:** this command has not been run yet (the machine was reserved for
-the P2 gate). The table below is filled in by the next `docs:` commit; do
-not cite it until then.
+Single run, 2026-09-16, machine otherwise idle, no guards:
 
 | prompt | tokens | finish | from draft | draft frac | spec tok/s | plain tok/s | vs plain |
 |---|---|---|---|---|---|---|---|
-| code-001 | pending | | | | | | |
-| prose-001 | pending | | | | | | |
-| chat-001 | pending | | | | | | |
+| code-001 | 64 | length | 51 | 0.797 | 52.99 | 23.95 | identical |
+| prose-001 | 64 | length | 40 | 0.625 | 27.99 | 23.95 | identical |
+| chat-001 | 64 | length | 43 | 0.672 | 34.26 | 23.89 | identical |
+
+Reading, with the usual caveat that this is one unguarded run of 64 tokens
+per prompt: mlx-lm's own path shows the workload dependence the brief
+predicts — code drafts well (0.80 of tokens from the draft, ~2.2× its own
+plain rate) while prose barely clears break-even (0.63, ~1.2×). The plain
+rate mlx-lm reports here (~24 tok/s) is above the ~20.5 tok/s median from the
+P1 rig because it excludes prefill, has no guard thread, and times from the
+first generated token. Compare speedups within this table only; the framework's
+own speedup numbers come from `window_ms` in the traces.
 
 Columns: `from draft` is the count of tokens with `GenerationResponse.from_draft`
 set; `draft frac` divides that by the tokens generated; `spec tok/s` and
