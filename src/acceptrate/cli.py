@@ -160,6 +160,95 @@ def bench_baseline(
     )
 
 
+DEFAULT_SWEEP_OUT = Path("traces/sweep")
+
+
+@bench_app.command("sweep")
+def bench_sweep(
+    draft: Annotated[str, typer.Option(help="Draft model repo.")] = DEFAULT_PAIR.draft.repo,  # type: ignore[union-attr]
+    ks: Annotated[str, typer.Option(help="Draft depths, e.g. '0-8' or '0,2,4'.")] = "0-8",
+    prompts_per_tag: Annotated[int, typer.Option(help="Train-split prompts per tag.")] = 6,
+    max_tokens: Annotated[int, typer.Option(help="Tokens per generation.")] = 200,
+    reps: Annotated[int, typer.Option(help="Repeats per prompt.")] = 1,
+    warmup: Annotated[int, typer.Option(help="Generations discarded per arm.")] = 2,
+    out: Annotated[Path, typer.Option(help="Traces root for sweep cells.")] = DEFAULT_SWEEP_OUT,
+) -> None:
+    """P3: one draft x every K x six tags, arms interleaved per prompt, one parquet cell per arm."""
+    from acceptrate.backend.mlx_backend import MLXBackend
+    from acceptrate.bench.guards import SystemGuard
+    from acceptrate.bench.runner import Arm, GenerationOutcome, RunPlan, run_plan
+    from acceptrate.bench.selection import select_prompts
+    from acceptrate.bench.sweep import parse_ks, sweep_arms
+    from acceptrate.bench.workloads import as_chat_messages, load_corpus
+    from acceptrate.runtime.engine import GenerationContext, generate_plain
+    from acceptrate.runtime.speculative import generate_speculative
+    from acceptrate.trace import TraceWriter, build_manifest
+    from acceptrate.trace.schema import WORKLOAD_TAGS
+    from acceptrate.weights import cached_spec
+
+    depths = parse_ks(ks)
+    needs_draft = any(k > 0 for k in depths)
+    pair = ModelPairConfig(
+        target=DEFAULT_PAIR.target, draft=cached_spec(draft) if needs_draft else None
+    )
+    _check_fit(pair)
+    chosen = select_prompts(load_corpus(), n=prompts_per_tag * len(WORKLOAD_TAGS))
+    specs = sweep_arms(
+        depths,
+        pair.target.repo,
+        draft if needs_draft else None,
+        max_tokens,
+        [p.id for p in chosen],
+        reps,
+        warmup,
+    )
+    target = MLXBackend.load(pair.target.repo)
+    draft_backend = MLXBackend.load(draft) if needs_draft else None
+    tokenizer = target.tokenizer
+    eos = tokenizer.eos_token_ids
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    writers = {
+        spec.run_id: TraceWriter(out / f"{spec.run_id}-{stamp}", build_manifest(spec.config))
+        for spec in specs
+    }
+
+    def make_generate(k: int):
+        def generate(prompt, rep: int, rid: str) -> GenerationOutcome:
+            tokens = tokenizer.encode_chat(as_chat_messages(prompt))
+            ctx = GenerationContext(rid, prompt.tag, prompt.id, rep)
+            if k == 0:
+                result = generate_plain(target, tokens, max_tokens, eos, ctx, lambda: guard.latest)
+            else:
+                result = generate_speculative(
+                    target, draft_backend, tokens, max_tokens, eos, ctx, lambda: guard.latest, k
+                )
+            return GenerationOutcome(len(result.tokens), result.rows)
+
+        return generate
+
+    arms = tuple(Arm(spec.name, spec.run_id, make_generate(spec.k)) for spec in specs)
+    typer.echo(f"sweep draft={draft} ks={depths} prompts={len(chosen)} reps={reps} -> {out}")
+    with SystemGuard() as guard:
+        try:
+            summary = run_plan(
+                RunPlan(prompts=chosen, reps=reps, warmup=warmup),
+                arms,
+                sink=lambda rid, rows: writers[rid].end_generation(rows),
+                on_progress=_progress_line,
+            )
+        finally:
+            for writer in writers.values():
+                writer.close()
+    for spec in specs:
+        arm = summary.arms[spec.name]
+        typer.echo(
+            f"{spec.name:8s} run {spec.run_id}: median {arm.tok_s.median:.2f} tok/s "
+            f"IQR [{arm.tok_s.q1:.2f}, {arm.tok_s.q3:.2f}] n={arm.tok_s.n} "
+            f"windows={arm.windows} dirty={arm.dirty_windows}"
+        )
+    typer.echo(f"guard_errors={guard.sample_errors}")
+
+
 @bench_app.command("compare")
 def bench_compare(run_a: Path, run_b: Path) -> None:
     """P1 gate: two runs of the same config must agree on median tok/s within 2%."""
