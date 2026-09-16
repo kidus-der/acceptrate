@@ -20,7 +20,7 @@ alongside positive ones.
 | P3 the sweep | ≥ 50 000 clean draft windows, 0 rows page_ins > 0 | **pass** — 70,290 clean windows, [evidence](docs/gates/P3.md) |
 | P4 analytical fit | predicted vs measured R² > 0.85 | **pass** — R² 0.970 with the measured verify factor (brief's form: −12.5), [evidence](docs/gates/P4.md) |
 | P5 adaptive runtime | adaptive K beats best fixed K by ≥ 5% | **fail ×2** — adaptive −1.1% vs fixed K=2; a per-prompt oracle gains 0.0%, [evidence](docs/gates/P5.md) |
-| P6 predictor + TUI | predictor beats constant prior; TUI ≥ 30 fps | |
+| P6 predictor + TUI | predictor beats constant prior; TUI ≥ 30 fps | **pass** — MAE −19.1% vs prior; 1,816 fps, [evidence](docs/gates/P6.md) |
 | P7 report | `make reproduce` regenerates every figure | |
 
 ## Layout

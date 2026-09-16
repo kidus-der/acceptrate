@@ -79,9 +79,14 @@ every acceptance difference between chat (α 0.70) and json (α 0.93). The
 brief's "re-pick K as you go" holds for the closed form and not for this
 chip. Details: `docs/gates/P5.md`.
 
-## The cold-start prior ⏳ (P6)
+## The cold-start prior (P6)
 
-*pending — `docs/gates/P6.md`.*
+A gradient-boosted regressor over 13 prompt-text features predicts the
+opening α from the prompt alone: held-out MAE 0.0625 against 0.0772 for a
+constant prior (−19.1%), trained on only 36 prompts. `acceptrate calibrate`
+profiles a machine in two minutes and reproduces the verify-cost curve
+within 1% of the full sweep. The Go TUI renders its instrument panel at
+1,816 fps on the model+view path. Details: `docs/gates/P6.md`.
 
 ## Reproduce
 
