@@ -66,12 +66,18 @@ refused by the startup guard. Even the safe pair needs MLX's buffer cache
 capped: with the default (unbounded) cache, a 40-minute run drove the
 kernel into memory-pressure "warn" and 55% of windows had to be excluded.
 
-## The adaptive runtime ⏳ (P5)
+## The adaptive runtime (P5) — a negative result
 
-The scheduler re-solves argmax_K of the corrected form every window from
-an EWMA of per-token acceptance and a measured draft cost; K never drops
-below 1 so the estimate keeps observing. Result on the held-out mixed
-workload: *pending — `docs/gates/P5.md`.*
+The scheduler re-solves argmax_K of the corrected form every window from an
+EWMA of per-token acceptance and a measured draft cost. On the held-out
+mixed workload it converged on K=2 for 75% of windows and finished 1.1%
+*below* the fixed K=2 arm (37.7 vs 38.1 tok/s); the gate asked for +5%.
+The gate is unreachable here: a per-prompt oracle choosing the best fixed
+K gains 0.0% over K=2, because 34 of 36 held-out prompts have K=2 as their
+own optimum. The 25% jump in verify cost between K=2 and K=3 outweighs
+every acceptance difference between chat (α 0.70) and json (α 0.93). The
+brief's "re-pick K as you go" holds for the closed form and not for this
+chip. Details: `docs/gates/P5.md`.
 
 ## The cold-start prior ⏳ (P6)
 
