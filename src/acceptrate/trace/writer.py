@@ -67,9 +67,9 @@ class TraceWriter:
         self._checkpoint_every = checkpoint_every
         self._pending: tuple[pl.DataFrame, ...] = ()
         self._generations_since_flush = 0
-        self._parts_written = 0
         self._closed = False
         self._run_dir.mkdir(parents=True, exist_ok=True)
+        # Append-only: a reopened run continues numbering after the parts already on disk.
         self._parts_written = len(_part_paths(self._run_dir))
         write_manifest(self._run_dir, manifest)
 
