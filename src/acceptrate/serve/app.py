@@ -66,6 +66,31 @@ def _collect(events: Iterator[Event]) -> tuple[str, int, str]:
     return "".join(parts), n_tokens, finish
 
 
+async def _chat_completion(session: Session, req: ChatCompletionRequest):
+    """Non-stream: drain on a worker thread. Stream: SSE chunks. Busy: SessionBusyError -> 429."""
+    if req.temperature > 0:
+        return _error(400, "invalid_request_error", SAMPLING_NOT_IMPLEMENTED)
+    messages = tuple(m.model_dump() for m in req.messages)
+    events = session.generate(messages, req.completion_budget)
+    completion_id, created = _new_completion_id(), int(time.time())
+    if req.stream:
+        stream = chat_chunks(events, completion_id, created, session.model)
+        return StreamingResponse(stream, media_type=SSE_MEDIA_TYPE, headers=SSE_HEADERS)
+    text, n_tokens, finish = await asyncio.to_thread(_collect, events)
+    prompt_tokens = session.prompt_tokens(messages)
+    return ChatCompletion(
+        id=completion_id,
+        created=created,
+        model=session.model,
+        choices=[Choice(message=Message(role="assistant", content=text), finish_reason=finish)],
+        usage=Usage(
+            prompt_tokens=prompt_tokens,
+            completion_tokens=n_tokens,
+            total_tokens=prompt_tokens + n_tokens,
+        ),
+    )
+
+
 def create_app(session: Session, *, heartbeat_s: float = HEARTBEAT_S) -> FastAPI:
     app = FastAPI(title="acceptrate serve", docs_url=None, redoc_url=None)
     started = int(time.time())
@@ -76,27 +101,7 @@ def create_app(session: Session, *, heartbeat_s: float = HEARTBEAT_S) -> FastAPI
 
     @app.post("/v1/chat/completions", response_model=ChatCompletion)
     async def chat_completions(req: ChatCompletionRequest):
-        if req.temperature > 0:
-            return _error(400, "invalid_request_error", SAMPLING_NOT_IMPLEMENTED)
-        messages = tuple(m.model_dump() for m in req.messages)
-        events = session.generate(messages, req.completion_budget)  # SessionBusyError -> 429
-        completion_id, created = _new_completion_id(), int(time.time())
-        if req.stream:
-            stream = chat_chunks(events, completion_id, created, session.model)
-            return StreamingResponse(stream, media_type=SSE_MEDIA_TYPE, headers=SSE_HEADERS)
-        text, n_tokens, finish = await asyncio.to_thread(_collect, events)
-        prompt_tokens = session.prompt_tokens(messages)
-        return ChatCompletion(
-            id=completion_id,
-            created=created,
-            model=session.model,
-            choices=[Choice(message=Message(role="assistant", content=text), finish_reason=finish)],
-            usage=Usage(
-                prompt_tokens=prompt_tokens,
-                completion_tokens=n_tokens,
-                total_tokens=prompt_tokens + n_tokens,
-            ),
-        )
+        return await _chat_completion(session, req)
 
     @app.get("/v1/models", response_model=ModelList)
     async def models() -> ModelList:
