@@ -7,8 +7,13 @@ import (
 	"github.com/kidus-der/acceptrate/tui/internal/api"
 )
 
-// minTokSScale keeps the throughput bar readable before the first window.
-const minTokSScale = 10.0
+// Throughput bar ceiling: headroom above the baseline and the best tok/s
+// seen so the bar has room to pull away rather than sitting pinned full.
+const (
+	minTokSScale     = 10.0
+	baselineHeadroom = 2.5
+	tokSHeadroom     = 1.25
+)
 
 // Status labels for the second header line.
 const (
@@ -59,9 +64,9 @@ func ApplyStats(s State, stats api.Stats) State {
 		}
 		next.KTarget = stats.KCurrent
 	}
-	next.TokSScale = max(s.TokSScale, minTokSScale, s.Baseline)
+	next.TokSScale = max(s.TokSScale, minTokSScale, s.Baseline*baselineHeadroom)
 	if stats.TokSRecent != nil {
-		next.TokSScale = max(next.TokSScale, *stats.TokSRecent)
+		next.TokSScale = max(next.TokSScale, *stats.TokSRecent*tokSHeadroom)
 	}
 	return next
 }
