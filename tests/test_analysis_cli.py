@@ -82,7 +82,7 @@ def test_figures_writes_all_four_as_pdf_and_png(sweep_root: Path, tmp_path: Path
     assert result.exit_code == 0, result.output
     names = {p.name for p in out.iterdir()}
     for stem in (
-        "speedup_heatmap",
+        "speedup_heatmap_draft-1b",  # one heatmap per draft, slug of fake/draft-1b
         "predicted_vs_measured",
         "residuals_vs_pressure",
         "alpha_by_position",

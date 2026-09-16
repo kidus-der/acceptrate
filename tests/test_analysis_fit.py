@@ -83,3 +83,30 @@ def test_residuals_by_tag_and_by_k(cells: pl.DataFrame) -> None:
     assert set(by_tag.columns) >= {"workload_tag", "n_cells", "residual_median", "residual_mad"}
     assert by_k["n_cells"].sum() == cells.filter(pl.col("k") > 0).height
     assert (by_tag["residual_mad"] >= 0).all()
+
+
+def test_fit_report_carries_both_naive_and_cost_corrected_r2(tmp_path) -> None:
+    from tests.synth_sweep import DEFAULT_SPEC, write_sweep
+
+    write_sweep(tmp_path, DEFAULT_SPEC)
+    cells = cell_metrics(clean(load_sweep(tmp_path)))
+
+    report = fit_report(cells)
+
+    assert report.r2_naive > 0.95  # synthetic timings follow the closed form (v == 1)
+    assert report.r2 > 0.95
+    assert {"predicted_naive", "predicted_speedup", "residual", "v"} <= set(
+        report.residuals.columns
+    )
+
+
+def test_corrected_prediction_divides_by_the_measured_verify_factor() -> None:
+    from acceptrate.analysis.fit import predicted_speedup_corrected
+    from acceptrate.model.speedup import expected_tokens
+
+    assert predicted_speedup_corrected(0.7, 4, 0.16, 1.0) == pytest.approx(
+        predicted_speedup(0.7, 4, 0.16)
+    )
+    assert predicted_speedup_corrected(0.7, 4, 0.16, 2.0) == pytest.approx(
+        expected_tokens(0.7, 4) / (4 * 0.16 + 2.0)
+    )

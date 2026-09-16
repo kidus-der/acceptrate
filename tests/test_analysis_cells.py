@@ -109,3 +109,28 @@ def test_alpha_by_position_bins_token_pos_per_tag(tmp_path: Path) -> None:
     code = binned.filter(pl.col("workload_tag") == "code")
     for alpha in code["alpha"]:
         assert alpha == pytest.approx(DEFAULT_SPEC.tag_alpha["code"], abs=ALPHA_TOLERANCE)
+
+
+def test_cells_are_unique_per_session_and_carry_the_measured_verify_factor(tmp_path) -> None:
+    """Two sessions of the same draft must not cross-join; v = verify_ms / plain step."""
+    import shutil
+
+    from acceptrate.trace import read_manifest
+    from tests.synth_sweep import DEFAULT_SPEC, write_sweep
+
+    root = tmp_path / "root"
+    root.mkdir()
+    for i in range(2):
+        src = tmp_path / f"s{i}"
+        write_sweep(src, DEFAULT_SPEC)
+        for d in src.iterdir():
+            run_id = read_manifest(d).run_id
+            shutil.copytree(d, root / f"{run_id}-2026091{i}-000000")
+    df = clean(load_sweep(root))
+    cells = cell_metrics(df)
+
+    assert cells.height == cells.select(list(CELL_KEY)).n_unique()
+    spec = cells.filter(pl.col("k") > 0)
+    assert "v" in spec.columns
+    assert (spec["v"] > 0).all()
+    assert spec["v"].median() == pytest.approx(1.0, abs=0.05)  # synthetic verify_ms == plain step
