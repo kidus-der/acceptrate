@@ -100,3 +100,19 @@ def test_encode_chat_applies_the_instruct_template(backend) -> None:
 
     assert len(chat) > len(plain)  # header tokens + role markers wrap the text
     assert chat[0] in backend.tokenizer.bos_token_ids
+
+
+def test_cache_limit_is_capped_and_relieve_releases_cached_buffers(backend) -> None:
+    import mlx.core as mx
+
+    from acceptrate.backend.mlx_backend import CACHE_LIMIT_BYTES
+
+    previous = mx.set_cache_limit(CACHE_LIMIT_BYTES)  # returns the limit in force before
+    assert previous == CACHE_LIMIT_BYTES  # load() already capped it
+    backend.prefill(backend.tokenizer.encode(PROMPT))
+    for _ in range(8):
+        backend.decode_step(5)
+
+    backend.relieve()
+
+    assert mx.get_cache_memory() == 0

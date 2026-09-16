@@ -126,3 +126,16 @@ def test_summary_counts_dirty_windows() -> None:
 
     assert summary.arms["base"].windows == 3
     assert summary.arms["base"].dirty_windows == 2
+
+
+def test_before_job_hook_runs_before_every_non_warmup_job_including_warmup() -> None:
+    arms = (Arm("base", "run-base", _gen(50.0)),)
+    plan = RunPlan(prompts=PROMPTS, reps=1, warmup=1)
+    seen: list[bool] = []
+
+    run_plan(
+        plan, arms, sink=lambda *_: None, on_progress=lambda *_: None,
+        before_job=lambda job: seen.append(job.warmup),
+    )  # fmt: skip
+
+    assert seen == [True, False, False, False]
