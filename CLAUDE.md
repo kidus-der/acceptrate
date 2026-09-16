@@ -75,6 +75,11 @@ Postgres, any React build chain, Docker, Textual, the TinyFish MCP.
 `tests/test_boundaries.py` scans the AST of `src/` and fails on any violation.
 It runs in CI. Do not weaken it.
 
+**How bench drives the engine without importing it:** `cli.py` is the
+composition root. It imports both sides and hands `bench/` a plain callable
+(`Generator`) that runs one generation and returns trace rows. `bench/` sees
+only that callable and the schema. Dependency inversion, not a loophole.
+
 ## The trace schema
 
 **One row per draft window, never per request.** Per-request averages destroy
@@ -94,6 +99,12 @@ be recovered later. Fields (brief tab 4):
 | mem_pressure | u8 | 0 normal / 1 warn / 2 critical; >0 excluded from headlines |
 | page_ins | int | delta over the window; non-zero invalidates the sample |
 | thermal_level | u8 | from pmset; throttled run = discarded run |
+| prompt_id | str | (added) which corpus prompt — needed to tell generations apart |
+| rep | int | (added) repeat index of the prompt within the run |
+| window_ms | f32 | (added) wall clock of the whole window incl. Python overhead; speedup is measured from this, not draft_ms + verify_ms |
+
+Rows are tuples in `trace/schema.py` `FIELD_NAMES` order. The definitive
+schema is `acceptrate.trace.schema.SCHEMA`.
 
 ## Why the engine owns the loop
 
