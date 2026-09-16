@@ -108,5 +108,5 @@ def test_corrected_prediction_divides_by_the_measured_verify_factor() -> None:
         predicted_speedup(0.7, 4, 0.16)
     )
     assert predicted_speedup_corrected(0.7, 4, 0.16, 2.0) == pytest.approx(
-        expected_tokens(0.7, 4) / (4 * 0.16 + 2.0)
+        expected_tokens(0.7, 4) / (2.0 * (4 * 0.16 + 1.0))
     )

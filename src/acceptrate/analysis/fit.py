@@ -24,7 +24,7 @@ FIT_COLUMNS: tuple[str, ...] = ("alpha", "c", "measured_speedup")
 @dataclass(frozen=True)
 class FitReport:
     r2: float
-    """Cost-corrected model: E[tokens] / (K*c + v), v measured per cell."""
+    """Cost-corrected model: E[tokens] / (v * (K*c + 1)), v measured per cell."""
     n_cells: int
     residuals: pl.DataFrame
     """Every fitted cell with predicted_speedup and residual columns."""
@@ -38,15 +38,17 @@ class FitReport:
 
 
 def predicted_speedup_corrected(alpha: float, k: int, c: float, v: float) -> float:
-    """Closed form with the measured verify factor: E[tokens] / (K*c + v).
+    """Closed form with the measured verify factor: E[tokens] / (v * (K*c + 1)).
 
-    On Apple Silicon the verify pass over K+1 tokens is not one decode step;
-    it grows past K ~ 2 (docs/gates/P4.md). c and v are both measured
-    timings from the cell, never fitted to the outcome.
+    c is the draft's per-token cost relative to one verify pass (as measured
+    per window); v is that verify pass relative to one plain decode step.
+    In plain-step units a window therefore costs v*(K*c + 1). The brief's
+    form assumes v == 1; on Apple Silicon it grows past K ~ 2
+    (docs/gates/P4.md). Both are measured timings, never fitted to the outcome.
     """
     if k == 0:
         return 1.0
-    return expected_tokens(alpha, k) / (k * c + v)
+    return expected_tokens(alpha, k) / (v * (k * c + 1.0))
 
 
 def predicted_speedup(alpha: float, k: int, c: float) -> float:
