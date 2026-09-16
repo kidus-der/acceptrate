@@ -7,11 +7,16 @@ canned command output, plus one live test against this Mac.
 
 from __future__ import annotations
 
+import itertools
+import time
+from collections.abc import Callable
+
 import pytest
 
 from acceptrate.bench.guards import (
     GuardParseError,
     GuardSnapshot,
+    SystemGuard,
     dirty_reason,
     is_clean,
     page_ins_from_swap_in,
@@ -143,3 +148,104 @@ def test_dirty_reason_lists_every_cause() -> None:
     assert "page_ins" in reason
     assert "mem_pressure" in reason
     assert "thermal_level" in reason
+
+
+# --- SystemGuard thread -------------------------------------------------------
+
+FAST_INTERVAL_S = 0.005
+WAIT_DEADLINE_S = 2.0
+
+
+def _counting_sampler() -> Callable[[], GuardSnapshot]:
+    ticks = itertools.count()
+    return lambda: _snap(page_ins=next(ticks), at=time.perf_counter())
+
+
+def _wait_until(predicate: Callable[[], bool]) -> None:
+    deadline = time.perf_counter() + WAIT_DEADLINE_S
+    while not predicate():
+        if time.perf_counter() > deadline:
+            raise AssertionError("guard thread never satisfied the condition")
+        time.sleep(FAST_INTERVAL_S)
+
+
+def test_latest_raises_before_any_sample_is_taken() -> None:
+    guard = SystemGuard(sampler=_counting_sampler(), interval_s=FAST_INTERVAL_S)
+
+    with pytest.raises(RuntimeError):
+        _ = guard.latest
+
+
+def test_sample_now_publishes_synchronously_without_a_thread() -> None:
+    guard = SystemGuard(sampler=_counting_sampler(), interval_s=FAST_INTERVAL_S)
+
+    snap = guard.sample_now()
+
+    assert guard.latest is snap
+    assert not guard.is_running
+
+
+def test_start_publishes_a_first_snapshot_before_returning() -> None:
+    guard = SystemGuard(sampler=_counting_sampler(), interval_s=FAST_INTERVAL_S)
+    try:
+        guard.start()
+        assert isinstance(guard.latest, GuardSnapshot)
+        assert guard.is_running
+    finally:
+        guard.stop()
+
+
+def test_thread_keeps_publishing_fresh_snapshots() -> None:
+    with SystemGuard(sampler=_counting_sampler(), interval_s=FAST_INTERVAL_S) as guard:
+        first = guard.latest
+
+        _wait_until(lambda: guard.latest.page_ins >= first.page_ins + 3)
+
+        assert guard.latest.sampled_at > first.sampled_at
+
+
+def test_stop_joins_the_thread_and_is_idempotent() -> None:
+    guard = SystemGuard(sampler=_counting_sampler(), interval_s=FAST_INTERVAL_S)
+    guard.start()
+
+    guard.stop()
+    settled = guard.latest
+    time.sleep(FAST_INTERVAL_S * 10)
+
+    assert not guard.is_running
+    assert guard.latest is settled
+    guard.stop()
+
+
+def test_sampler_errors_are_counted_and_keep_the_last_good_snapshot() -> None:
+    calls = itertools.count()
+
+    def flaky() -> GuardSnapshot:
+        n = next(calls)
+        if n % 2 == 1:
+            raise GuardParseError("boom")
+        return _snap(page_ins=n, at=time.perf_counter())
+
+    with SystemGuard(sampler=flaky, interval_s=FAST_INTERVAL_S) as guard:
+        _wait_until(lambda: guard.sample_errors >= 2)
+
+        assert isinstance(guard.latest, GuardSnapshot)
+        assert isinstance(guard.last_error, GuardParseError)
+        assert guard.is_running
+
+
+def test_sample_now_raises_instead_of_counting() -> None:
+    def broken() -> GuardSnapshot:
+        raise GuardParseError("boom")
+
+    guard = SystemGuard(sampler=broken, interval_s=FAST_INTERVAL_S)
+
+    with pytest.raises(GuardParseError):
+        guard.sample_now()
+    assert guard.sample_errors == 0
+
+
+def test_start_twice_is_an_error() -> None:
+    with SystemGuard(sampler=_counting_sampler(), interval_s=FAST_INTERVAL_S) as guard:
+        with pytest.raises(RuntimeError):
+            guard.start()
