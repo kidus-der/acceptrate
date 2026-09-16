@@ -17,7 +17,7 @@ alongside positive ones.
 | P0 env + skeleton | `acceptrate bench --smoke` streams 128 tokens, exits 0 | **pass** — [evidence](docs/gates/P0.md) |
 | P1 measurement rig | same config twice, median tok/s within 2% | **pass** — 0.14%, [evidence](docs/gates/P1.md) |
 | P2 losslessness | 20 prompts at T=0, token-identical, 20/20 | **pass** — 19 identical + 1 near-tie within the calibrated 0.10 noise floor, [evidence](docs/gates/P2.md) |
-| P3 the sweep | ≥ 50 000 clean draft windows, 0 rows page_ins > 0 | |
+| P3 the sweep | ≥ 50 000 clean draft windows, 0 rows page_ins > 0 | **pass** — 70,290 clean windows, [evidence](docs/gates/P3.md) |
 | P4 analytical fit | predicted vs measured R² > 0.85 | |
 | P5 adaptive runtime | adaptive K beats best fixed K by ≥ 5% | |
 | P6 predictor + TUI | predictor beats constant prior; TUI ≥ 30 fps | |
