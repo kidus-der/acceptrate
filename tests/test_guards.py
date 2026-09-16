@@ -12,6 +12,8 @@ import pytest
 from acceptrate.bench.guards import (
     GuardParseError,
     GuardSnapshot,
+    dirty_reason,
+    is_clean,
     page_ins_from_swap_in,
     parse_mem_pressure,
     parse_thermal,
@@ -97,3 +99,47 @@ def test_snapshot_is_immutable() -> None:
 
     with pytest.raises((AttributeError, TypeError)):
         snap.page_ins = 2  # type: ignore[misc]
+
+
+# --- is_clean / dirty_reason --------------------------------------------------
+
+
+def _snap(mem: int = 0, page_ins: int = 100, thermal: int = 0, at: float = 0.0) -> GuardSnapshot:
+    return GuardSnapshot(mem_pressure=mem, page_ins=page_ins, thermal_level=thermal, sampled_at=at)
+
+
+def test_clean_when_nothing_moved_and_both_ends_are_nominal() -> None:
+    assert is_clean(_snap(at=0.0), _snap(at=1.0))
+    assert dirty_reason(_snap(at=0.0), _snap(at=1.0)) == ""
+
+
+def test_dirty_when_page_ins_advanced_over_the_window() -> None:
+    before, after = _snap(page_ins=100), _snap(page_ins=103)
+
+    assert not is_clean(before, after)
+    assert "page_ins" in dirty_reason(before, after)
+    assert "3" in dirty_reason(before, after)
+
+
+@pytest.mark.parametrize(("before", "after"), [(_snap(mem=1), _snap()), (_snap(), _snap(mem=2))])
+def test_dirty_when_memory_pressure_is_elevated_at_either_end(
+    before: GuardSnapshot, after: GuardSnapshot
+) -> None:
+    assert not is_clean(before, after)
+    assert "mem_pressure" in dirty_reason(before, after)
+
+
+@pytest.mark.parametrize(
+    ("before", "after"), [(_snap(thermal=5), _snap()), (_snap(), _snap(thermal=40))]
+)
+def test_dirty_when_throttled_at_either_end(before: GuardSnapshot, after: GuardSnapshot) -> None:
+    assert not is_clean(before, after)
+    assert "thermal_level" in dirty_reason(before, after)
+
+
+def test_dirty_reason_lists_every_cause() -> None:
+    reason = dirty_reason(_snap(mem=1, page_ins=1, thermal=1), _snap(mem=0, page_ins=2, thermal=0))
+
+    assert "page_ins" in reason
+    assert "mem_pressure" in reason
+    assert "thermal_level" in reason
