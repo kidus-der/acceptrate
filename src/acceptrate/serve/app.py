@@ -1,8 +1,13 @@
-"""`create_app(session)`: the OpenAI-compatible endpoint plus the live stats feed.
+"""`create_app(session)`: the OpenAI-compatible endpoint, the live stats feed, the dashboard.
 
 Localhost only, no auth, no secrets: the runner binds 127.0.0.1 by default.
 One generation at a time — a second request while one runs gets 429 with an
 OpenAI-style error body rather than queueing (see serve/session.py for why).
+
+The dashboard is the Svelte app built into serve/static/ (committed and
+shipped in the wheel, so users never need Node). When that directory is
+missing — a source checkout that skipped `make dashboard` — /dashboard is a
+clear 404 JSON instead of a Starlette error, and the API is unaffected.
 """
 
 from __future__ import annotations
@@ -10,10 +15,12 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Iterator
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from acceptrate.serve.schemas import (
     ChatCompletion,
@@ -41,6 +48,15 @@ SAMPLING_NOT_IMPLEMENTED = (
 BUSY_MESSAGE = (
     "a generation is already running on the single local GPU; requests are not queued "
     "because interleaving would corrupt the per-window timing stats — retry shortly"
+)
+
+STATIC_DIR = Path(__file__).parent / "static"
+"""Where `vite build` (dashboard/) writes the app; hatchling ships it in the wheel."""
+
+DASHBOARD_PATH = "/dashboard"
+DASHBOARD_MISSING = (
+    "the dashboard is not built: run `npm run build` in dashboard/ (or `make dashboard`) "
+    "to populate src/acceptrate/serve/static/; the API works without it"
 )
 
 
@@ -91,7 +107,26 @@ async def _chat_completion(session: Session, req: ChatCompletionRequest):
     )
 
 
-def create_app(session: Session, *, heartbeat_s: float = HEARTBEAT_S) -> FastAPI:
+def _mount_dashboard(app: FastAPI, static_dir: Path) -> None:
+    """Serve the built app at /dashboard, or a clear 404 JSON when it was never built."""
+
+    @app.get("/", include_in_schema=False)
+    async def root() -> RedirectResponse:
+        return RedirectResponse(DASHBOARD_PATH + "/")
+
+    if (static_dir / "index.html").is_file():
+        app.mount(DASHBOARD_PATH, StaticFiles(directory=static_dir, html=True), name="dashboard")
+        return
+
+    @app.get(DASHBOARD_PATH + "/{path:path}", include_in_schema=False)
+    @app.get(DASHBOARD_PATH, include_in_schema=False)
+    async def dashboard_missing(path: str = "") -> JSONResponse:
+        return _error(404, "not_found", DASHBOARD_MISSING)
+
+
+def create_app(
+    session: Session, *, heartbeat_s: float = HEARTBEAT_S, static_dir: Path | None = None
+) -> FastAPI:
     app = FastAPI(title="acceptrate serve", docs_url=None, redoc_url=None)
     started = int(time.time())
 
@@ -122,4 +157,5 @@ def create_app(session: Session, *, heartbeat_s: float = HEARTBEAT_S) -> FastAPI
     async def healthz() -> Health:
         return Health(busy=session.busy)
 
+    _mount_dashboard(app, STATIC_DIR if static_dir is None else static_dir)
     return app
