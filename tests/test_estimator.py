@@ -59,6 +59,14 @@ def test_half_life_means_half_the_weight_after_that_many_windows() -> None:
     assert est.alpha == pytest.approx(0.5, abs=1e-9)
 
 
+def test_alpha_is_per_token_so_a_rejection_counts_as_one_examined_token() -> None:
+    est = AcceptanceEstimator(prior=0.0, half_life_windows=1e-9, warmup_windows=0)
+
+    est = est.update(k_proposed=4, n_accepted=2)  # 2 accepted, 1 rejected, 1 never examined
+
+    assert est.alpha == pytest.approx(2 / 3)
+
+
 def test_zero_proposed_window_is_ignored() -> None:
     est = AcceptanceEstimator(prior=0.6, half_life_windows=4, warmup_windows=0)
 

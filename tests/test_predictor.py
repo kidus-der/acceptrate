@@ -63,8 +63,8 @@ def test_alpha_per_prompt_pools_windows_per_prompt() -> None:
 
     alphas = alpha_per_prompt(df)
 
-    assert alphas["code-001"] == pytest.approx(10 / 12)
-    assert alphas["prose-001"] == pytest.approx(1 / 8)
+    assert alphas["code-001"] == pytest.approx(10 / 11)  # examined 4 + 4 + 3
+    assert alphas["prose-001"] == pytest.approx(1 / 3)  # examined 1 + 2
 
 
 def test_alpha_per_prompt_ignores_k_zero_rows() -> None:

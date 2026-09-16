@@ -42,7 +42,7 @@ def test_build_dataset_pairs_alpha_with_features_for_the_requested_split() -> No
 
     assert ds.prompt_ids == ("code-001", "prose-001")
     assert ds.features.shape == (2, len(FEATURE_NAMES))
-    np.testing.assert_allclose(ds.alphas, [1.0, 3 / 8])
+    np.testing.assert_allclose(ds.alphas, [1.0, 3 / 5])  # prose examined 2 + 3
 
 
 def test_build_dataset_skips_prompts_without_windows() -> None:

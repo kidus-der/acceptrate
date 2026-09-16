@@ -43,7 +43,7 @@ def test_compare_generation_reports_match_and_alpha() -> None:
     assert report.first_divergence is None
     assert report.n_tokens == 3
     assert report.windows == 3
-    assert report.alpha == pytest.approx(6 / 12)
+    assert report.alpha == pytest.approx(6 / 8)  # examined 4 + 3 + 1
 
 
 def test_compare_generation_reports_the_divergence_and_both_tokens() -> None:
