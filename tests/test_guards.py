@@ -8,6 +8,8 @@ canned command output, plus one live test against this Mac.
 from __future__ import annotations
 
 import itertools
+import re
+import subprocess
 import time
 from collections.abc import Callable
 
@@ -22,6 +24,7 @@ from acceptrate.bench.guards import (
     page_ins_from_swap_in,
     parse_mem_pressure,
     parse_thermal,
+    take_snapshot,
 )
 
 # --- pmset -g therm -----------------------------------------------------------
@@ -251,3 +254,31 @@ def test_start_twice_is_an_error() -> None:
         pytest.raises(RuntimeError),
     ):
         guard.start()
+
+
+# --- live, on this Mac (CI is macOS; no marker needed) ------------------------
+
+VM_STAT_PAGEINS = re.compile(r"^Pageins:\s+(\d+)\.", re.MULTILINE)
+PAGEINS_DRIFT_TOLERANCE = 0.01
+
+
+def test_live_samplers_return_ints_in_range() -> None:
+    snap = take_snapshot()
+
+    assert snap.mem_pressure in (0, 1, 2)
+    assert snap.thermal_level >= 0
+    assert snap.page_ins > 0
+    assert all(isinstance(v, int) for v in (snap.mem_pressure, snap.page_ins, snap.thermal_level))
+    assert snap.sampled_at > 0
+
+
+def test_live_page_ins_agree_with_vm_stat() -> None:
+    snap = take_snapshot()
+    vm_stat = subprocess.run(["vm_stat"], capture_output=True, text=True, check=True).stdout
+    match = VM_STAT_PAGEINS.search(vm_stat)
+    assert match is not None, vm_stat
+
+    reported = int(match.group(1))
+
+    assert reported >= snap.page_ins
+    assert reported - snap.page_ins <= reported * PAGEINS_DRIFT_TOLERANCE
