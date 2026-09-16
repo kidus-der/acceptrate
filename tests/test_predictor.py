@@ -76,7 +76,7 @@ def test_alpha_per_prompt_ignores_k_zero_rows() -> None:
 def _synthetic(n: int, seed: int):
     rng = np.random.default_rng(seed)
     texts, ys = [], []
-    for i in range(n):
+    for _ in range(n):
         fenced = rng.random() < 0.5
         base = (
             "```python\ndef f():\n    pass\n```"
@@ -85,48 +85,48 @@ def _synthetic(n: int, seed: int):
         )
         texts.append(base + " " * int(rng.integers(0, 40)))
         ys.append((0.85 if fenced else 0.45) + rng.normal(0, 0.03))
-    X = np.stack([prompt_features(t) for t in texts])
-    return X, np.array(ys)
+    x = np.stack([prompt_features(t) for t in texts])
+    return x, np.array(ys)
 
 
 def test_trained_predictor_beats_a_constant_prior_on_held_out_synthetic_data() -> None:
-    X_train, y_train = _synthetic(120, seed=1)
-    X_test, y_test = _synthetic(40, seed=2)
+    x_train, y_train = _synthetic(120, seed=1)
+    x_test, y_test = _synthetic(40, seed=2)
 
-    predictor = train_predictor(X_train, y_train)
+    predictor = train_predictor(x_train, y_train)
 
     assert isinstance(predictor, Predictor)
-    mae = evaluate_mae(predictor, X_test, y_test)
+    mae = evaluate_mae(predictor, x_test, y_test)
     prior = constant_prior_mae(y_train, y_test)
     assert mae < prior
     assert prior > 0.1  # the two clusters make a constant prior genuinely bad
 
 
 def test_predictions_are_clipped_to_the_unit_interval() -> None:
-    X_train, y_train = _synthetic(60, seed=3)
-    predictor = train_predictor(X_train, y_train)
+    x_train, y_train = _synthetic(60, seed=3)
+    predictor = train_predictor(x_train, y_train)
 
-    preds = predictor.predict(X_train)
+    preds = predictor.predict(x_train)
 
     assert (preds >= 0).all() and (preds <= 1).all()
 
 
 def test_roundtrip_through_disk(tmp_path) -> None:
-    X_train, y_train = _synthetic(60, seed=4)
-    predictor = train_predictor(X_train, y_train)
+    x_train, y_train = _synthetic(60, seed=4)
+    predictor = train_predictor(x_train, y_train)
     path = tmp_path / "predictor.joblib"
 
     predictor.save(path)
     loaded = Predictor.load(path)
 
-    np.testing.assert_allclose(loaded.predict(X_train), predictor.predict(X_train))
+    np.testing.assert_allclose(loaded.predict(x_train), predictor.predict(x_train))
 
 
 def test_training_needs_enough_rows() -> None:
-    X, y = _synthetic(3, seed=5)
+    x, y = _synthetic(3, seed=5)
 
     with pytest.raises(ValueError):
-        train_predictor(X, y)
+        train_predictor(x, y)
 
 
 def test_dataframe_column_order_matches_feature_names() -> None:
