@@ -1,4 +1,4 @@
-<section class="panel p-4 text-sm leading-relaxed" aria-labelledby="explainer-title">
+<section class="panel min-w-0 p-4 text-sm leading-relaxed" aria-labelledby="explainer-title">
   <h2 id="explainer-title" class="panel-title mb-3">the equation</h2>
   <p class="data equation" aria-label="speedup of alpha, K and c equals one minus alpha to the K plus one, over one minus alpha times K c plus one">
     speedup(α, K, c) = (1 − α<sup>K+1</sup>) / ((1 − α) · (K·c + 1))

@@ -23,7 +23,7 @@
   const now = $derived(ready && k >= 0 ? speedup(alpha as number, k, c as number) : null);
 </script>
 
-<section class="panel p-4" aria-labelledby="calc-title">
+<section class="panel min-w-0 p-4" aria-labelledby="calc-title">
   <h2 id="calc-title" class="panel-title mb-3">speedup vs K · measured α and c</h2>
   {#if data !== null}
     <Chart {opts} {data} label="Speedup versus draft depth K, current K marked" />

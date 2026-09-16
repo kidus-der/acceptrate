@@ -16,7 +16,7 @@
   const data = $derived(toColumns(history));
 </script>
 
-<section class="panel p-4" aria-labelledby="ts-title">
+<section class="panel min-w-0 p-4" aria-labelledby="ts-title">
   <h2 id="ts-title" class="panel-title mb-3">
     tok/s and α · last {history.length} windows
     <span class="key data"><span class="tok">—</span> tok/s (left) <span class="alpha">···</span> α (right)</span>

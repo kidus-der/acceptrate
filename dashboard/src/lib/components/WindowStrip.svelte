@@ -19,7 +19,7 @@
   });
 </script>
 
-<section class="panel p-4" aria-labelledby="strip-title">
+<section class="panel min-w-0 p-4" aria-labelledby="strip-title">
   <h2 id="strip-title" class="panel-title mb-3">window strip · last {windows.length} windows</h2>
   <div
     class="strip data"
