@@ -1,0 +1,43 @@
+@import 'tailwindcss';
+@import './tokens.css';
+@import 'uplot/dist/uPlot.min.css';
+
+/* Tokens are consumed as plain custom properties (see tokens.css, generated);
+   Tailwind is used for layout and spacing only, so the palette stays single-sourced. */
+:root {
+  --font-ui-stack: var(--font-ui), 'Inter', system-ui, -apple-system, sans-serif;
+  --font-data-stack: var(--font-data), var(--font-capture), ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+html {
+  background: var(--color-ground);
+  color: var(--color-ink);
+  font-family: var(--font-ui-stack);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.data {
+  font-family: var(--font-data-stack);
+  font-variant-numeric: tabular-nums;
+}
+
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+}
+
+.panel-title {
+  color: var(--color-muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* uPlot's default legend colours assume a light page. */
+.u-legend {
+  color: var(--color-ink-2);
+  font-family: var(--font-data-stack);
+  font-size: 0.72rem;
+}

@@ -1,0 +1,24 @@
+{
+  "name": "acceptrate-dashboard",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "The live speedup calculator: Svelte 5 + uPlot, built to static assets served by `acceptrate serve`.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "svelte": "^5.57.0",
+    "uplot": "^1.6.32"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "jsdom": "^30.0.1",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
+  }
+}
