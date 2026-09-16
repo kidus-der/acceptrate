@@ -1,4 +1,4 @@
-"""Per-cell metrics: one row per (target, max_tokens, draft, k, workload_tag).
+"""Per-cell metrics: one row per (target, max_tokens, session, draft, k, workload_tag).
 
 The aggregation is DuckDB SQL over the registered Polars frame. Two acceptance
 figures are reported and they are not the same thing:
@@ -21,8 +21,8 @@ from __future__ import annotations
 import duckdb
 import polars as pl
 
-CELL_KEY: tuple[str, ...] = ("target", "max_tokens", "draft", "k", "workload_tag")
-BASELINE_KEY: tuple[str, ...] = ("target", "max_tokens", "workload_tag")
+CELL_KEY: tuple[str, ...] = ("target", "max_tokens", "session", "draft", "k", "workload_tag")
+BASELINE_KEY: tuple[str, ...] = ("target", "max_tokens", "session", "workload_tag")
 ROWS_VIEW = "rows"
 SPECULATION_PARITY = 1.0
 """Measured speedup at which speculation neither wins nor loses."""
@@ -30,14 +30,14 @@ DEFAULT_POSITION_BIN = 16
 
 CELL_SQL = """
 WITH generations AS (
-    SELECT target, max_tokens, draft, k, workload_tag, prompt_id, rep,
+    SELECT target, max_tokens, session, draft, k, workload_tag, prompt_id, rep,
            SUM(n_accepted + 1) AS tokens,
            SUM(window_ms) AS elapsed_ms
     FROM rows
     GROUP BY ALL
 ),
 rates AS (
-    SELECT target, max_tokens, draft, k, workload_tag,
+    SELECT target, max_tokens, session, draft, k, workload_tag,
            COUNT(*) AS n_generations,
            MEDIAN(tokens / elapsed_ms * 1000.0) AS tok_s_median,
            QUANTILE_CONT(tokens / elapsed_ms * 1000.0, 0.25) AS tok_s_q1,
@@ -47,7 +47,7 @@ rates AS (
     GROUP BY ALL
 ),
 windows AS (
-    SELECT target, max_tokens, draft, k, workload_tag,
+    SELECT target, max_tokens, session, draft, k, workload_tag,
            COUNT(*) AS n_windows,
            SUM(n_accepted)::DOUBLE
                / NULLIF(SUM(n_accepted + (n_accepted < k_proposed)::INTEGER), 0) AS alpha,
@@ -57,7 +57,7 @@ windows AS (
     FROM rows
     GROUP BY ALL
 )
-SELECT w.target, w.max_tokens, w.draft, w.k, w.workload_tag,
+SELECT w.target, w.max_tokens, w.session, w.draft, w.k, w.workload_tag,
        w.n_windows, r.n_generations, w.alpha, w.accept_frac, w.c,
        r.tok_s_median, r.tok_s_q1, r.tok_s_q3, r.tok_s_q3 - r.tok_s_q1 AS tok_s_iqr
 FROM windows w

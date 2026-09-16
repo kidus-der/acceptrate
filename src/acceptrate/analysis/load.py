@@ -7,6 +7,7 @@ downstream code groups by (draft, k, workload_tag) without reading manifests.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,6 +28,18 @@ CONFIG_DTYPES: dict[str, pl.DataType] = {
     "target": pl.Utf8(),
     "max_tokens": pl.Int32(),
 }
+SESSION_COLUMN = "session"
+_STAMP = re.compile(r"^[0-9a-f]{12}-(\d{8}-\d{6})$")
+
+
+def session_of(run_dir: Path | str) -> str:
+    """The invocation stamp shared by every cell dir a single sweep wrote, else ''.
+
+    Baselines are paired within a session so a K=0 cell is compared against
+    speculative cells measured under the same thermal conditions.
+    """
+    match = _STAMP.match(Path(run_dir).name)
+    return match.group(1) if match else ""
 
 
 @dataclass(frozen=True)
@@ -58,7 +71,12 @@ def _config_columns(config: dict) -> list[pl.Expr]:
 def load_run(run_dir: Path | str) -> pl.DataFrame:
     """One run's rows with its manifest config attached as columns."""
     config = read_manifest(run_dir).config
-    return read_run(run_dir).with_columns(_config_columns(config))
+    return read_run(run_dir).with_columns(
+        [
+            *_config_columns(config),
+            pl.lit(session_of(run_dir), dtype=pl.Utf8()).alias(SESSION_COLUMN),
+        ]
+    )
 
 
 def load_sweep(traces_root: Path | str) -> pl.DataFrame:
@@ -71,7 +89,9 @@ def load_sweep(traces_root: Path | str) -> pl.DataFrame:
 
 def load_empty() -> pl.DataFrame:
     """A sweep frame with no rows but every column, for roots with no runs."""
-    return frame_from_rows([]).with_columns(_config_columns({}))
+    return frame_from_rows([]).with_columns(
+        [*_config_columns({}), pl.lit("", dtype=pl.Utf8()).alias(SESSION_COLUMN)]
+    )
 
 
 def clean(df: pl.DataFrame) -> pl.DataFrame:
