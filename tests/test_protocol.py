@@ -74,3 +74,23 @@ def test_trim_rolls_back_position_so_decode_continues_from_the_kept_prefix() -> 
     assert backend.position == 2
     np.testing.assert_array_equal(backend.decode_step(9), FakeBackend()._logits_for(9))
     assert backend.position == 3
+
+
+def test_tokenizer_protocol_requires_encode_chat() -> None:
+    class NoChat:
+        eos_token_ids = frozenset({0})
+
+        def encode(self, text):
+            return [1]
+
+        def decode(self, tokens):
+            return ""
+
+    assert not isinstance(NoChat(), Tokenizer)
+
+
+def test_fake_tokenizer_encode_chat_returns_token_ids() -> None:
+    tokens = FakeTokenizer().encode_chat([{"role": "user", "content": "hello"}])
+
+    assert tokens
+    assert all(isinstance(t, int) for t in tokens)

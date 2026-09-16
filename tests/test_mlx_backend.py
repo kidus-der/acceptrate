@@ -91,3 +91,12 @@ def test_tokenizer_roundtrips_text(backend) -> None:
     assert backend.tokenizer.decode(tokens).strip() == PROMPT
     assert isinstance(backend.tokenizer.eos_token_ids, frozenset)
     assert backend.tokenizer.eos_token_ids
+
+
+def test_encode_chat_applies_the_instruct_template(backend) -> None:
+    plain = backend.tokenizer.encode(PROMPT)
+
+    chat = backend.tokenizer.encode_chat([{"role": "user", "content": PROMPT}])
+
+    assert len(chat) > len(plain)  # header tokens + role markers wrap the text
+    assert chat[0] in backend.tokenizer.bos_token_ids
