@@ -1,4 +1,4 @@
-.PHONY: test lint fmt smoke reproduce
+.PHONY: test lint fmt smoke reproduce tokens tokens-check calibrate lossless sweep-one adaptive
 
 test:
 	uv run pytest -m "not model and not perf"
@@ -28,6 +28,12 @@ sweep-one:  ## DRAFT=mlx-community/... make sweep-one
 
 adaptive:
 	uv run acceptrate bench adaptive
+
+tokens:
+	uv run python -m acceptrate.design --write
+
+tokens-check:
+	uv run python -m acceptrate.design --check
 
 reproduce:
 	@echo "make reproduce is a P7 deliverable; nothing to regenerate yet" >&2
