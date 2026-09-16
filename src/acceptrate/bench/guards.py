@@ -74,16 +74,15 @@ def run_command(argv: Sequence[str]) -> str:
 
 def parse_thermal(text: str) -> int:
     """thermal_level from `pmset -g therm` output; see the module docstring."""
-    limits = {key: int(value) for key, value in THERMAL_LIMIT_LINE.findall(text)}
-    present = [key for key in THERMAL_LIMIT_KEYS if key in limits]
-    if not present:
+    found = {key: int(value) for key, value in THERMAL_LIMIT_LINE.findall(text)}
+    limits = [found[key] for key in THERMAL_LIMIT_KEYS if key in found]
+    if not limits:
         if THERMAL_NOMINAL_NOTE.search(text):
             return 0
         raise GuardParseError(f"pmset -g therm output has no limits and no notes: {text!r}")
-    lost = [THERMAL_UNTHROTTLED - limits[key] for key in present]
-    if any(limits[key] > THERMAL_UNTHROTTLED for key in present):
-        raise GuardParseError(f"pmset limit above {THERMAL_UNTHROTTLED}: {limits!r}")
-    return max(lost)
+    if max(limits) > THERMAL_UNTHROTTLED:
+        raise GuardParseError(f"pmset limit above {THERMAL_UNTHROTTLED}: {found!r}")
+    return THERMAL_UNTHROTTLED - min(limits)
 
 
 def sample_thermal(run: Runner = run_command) -> int:
