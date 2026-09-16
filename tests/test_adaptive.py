@@ -149,3 +149,25 @@ def test_property_adaptive_equals_plain_for_any_draft(step_d, offset_d, prompt, 
     )  # fmt: skip
 
     assert result.tokens == plain.tokens
+
+
+def test_hysteresis_keeps_the_current_k_unless_the_gain_clears_the_margin() -> None:
+    """A switch must beat the current K's predicted speedup by `switch_margin`; tiny
+    edges (the K=1/K=2 flicker seen in P5) are not worth the disruption."""
+    sched = AdaptiveScheduler(
+        _cfg(prior_alpha=0.7, switch_margin=0.5)
+    )  # absurd margin: never switch
+    first = sched.next_k()
+    for _ in range(10):
+        sched.observe(first, first, draft_ms=first * 8.0, verify_ms=50.0)  # perfect acceptance
+
+    assert sched.next_k() == first
+
+
+def test_zero_margin_switches_freely() -> None:
+    sched = AdaptiveScheduler(_cfg(prior_alpha=0.5, switch_margin=0.0))
+    low = sched.next_k()
+    for _ in range(10):
+        sched.observe(low, low, draft_ms=low * 8.0, verify_ms=50.0)
+
+    assert sched.next_k() > low
