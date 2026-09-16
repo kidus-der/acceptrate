@@ -1,4 +1,4 @@
-.PHONY: test lint fmt smoke reproduce tokens tokens-check calibrate lossless sweep-one adaptive tui tui-test chat-demo
+.PHONY: test lint fmt smoke reproduce tokens tokens-check calibrate lossless sweep-one adaptive tui tui-test chat-demo dashboard
 
 test:
 	uv run pytest -m "not model and not perf"
@@ -46,6 +46,9 @@ tui-test:
 
 chat-demo: tui  ## the TUI against its in-process mock, no model needed
 	tui/bin/acceptrate-tui --mock
+
+dashboard:  ## build the Svelte dashboard into src/acceptrate/serve/static (commit the result)
+	cd dashboard && npm install && npm run build
 
 reproduce:  ## regenerate every published figure and table from raw traces
 	uv run acceptrate analysis p3-gate $(TRACES)
