@@ -114,6 +114,34 @@ def _load_draft(draft: str, target):
     return MLXBackend.load(draft)
 
 
+PACING_MAX_WAIT_S = 120
+PACING_POLL_S = 1.0
+
+
+def _pacer(guard, backends, counter: list[int]):
+    """Before each generation: if the guard reports pressure or throttling, release
+    MLX's cached buffers and wait (polling at 1 Hz) until the machine is clean
+    again, up to PACING_MAX_WAIT_S. Counts waits so the summary can report them."""
+    import time
+
+    def before_job(job) -> None:
+        waited = 0.0
+        while waited < PACING_MAX_WAIT_S:
+            snap = guard.sample_now()
+            if snap.mem_pressure == 0 and snap.thermal_level == 0:
+                return
+            if waited == 0.0:
+                counter[0] += 1
+                for backend in backends:
+                    relieve = getattr(backend, "relieve", None)
+                    if relieve is not None:
+                        relieve()
+            time.sleep(PACING_POLL_S)
+            waited += PACING_POLL_S
+
+    return before_job
+
+
 def _progress_line(done: int, total: int) -> None:
     sys.stdout.write(f"\r  generation {done}/{total}")
     sys.stdout.flush()
@@ -251,6 +279,7 @@ def bench_sweep(
 
     arms = tuple(Arm(spec.name, spec.run_id, make_generate(spec.k)) for spec in specs)
     typer.echo(f"sweep draft={draft} ks={depths} prompts={len(chosen)} reps={reps} -> {out}")
+    waits = [0]
     with SystemGuard() as guard:
         try:
             summary = run_plan(
@@ -258,6 +287,7 @@ def bench_sweep(
                 arms,
                 sink=lambda rid, rows: writers[rid].end_generation(rows),
                 on_progress=_progress_line,
+                before_job=_pacer(guard, [target, draft_backend], waits),
             )
         finally:
             for writer in writers.values():
@@ -338,6 +368,7 @@ def bench_adaptive(
 
     arms = tuple(Arm(spec.name, spec.run_id, make_generate(spec.k)) for spec in specs)
     typer.echo(f"p5 draft={draft} fixed={fixed} heldout prompts={len(chosen)} seed={seed} -> {out}")
+    waits = [0]
     with SystemGuard() as guard:
         try:
             summary = run_plan(
@@ -345,6 +376,7 @@ def bench_adaptive(
                 arms,
                 sink=lambda rid, rows: writers[rid].end_generation(rows),
                 on_progress=_progress_line,
+                before_job=_pacer(guard, [target, draft_backend], waits),
             )
         finally:
             for writer in writers.values():
