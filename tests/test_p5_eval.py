@@ -7,8 +7,8 @@ held-out split was fixed before any measurement existed (bench/workloads).
 from __future__ import annotations
 
 from acceptrate.bench.p5 import P5Verdict, p5_arms, score_p5
-from acceptrate.bench.stats import MedianIQR
 from acceptrate.bench.runner import ArmSummary
+from acceptrate.bench.stats import MedianIQR
 
 
 def _arm(median: float, n: int = 20) -> ArmSummary:
