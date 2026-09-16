@@ -17,6 +17,7 @@ import typer
 
 from acceptrate.config import DEFAULT_PAIR, ModelPairConfig
 from acceptrate.memory import assess_fit, current_pressure_level, total_bytes
+from acceptrate.verify.noise_floor import DEFAULT_CALIBRATION_PATH
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 models_app = typer.Typer(no_args_is_help=True)
@@ -177,66 +178,109 @@ def bench_compare(run_a: Path, run_b: Path) -> None:
     typer.echo("P1 gate: PASS")
 
 
+@verify_app.command("calibrate")
+def verify_calibrate(
+    prompts: Annotated[int, typer.Option(help="Corpus prompts to score.")] = 10,
+    gen_tokens: Annotated[int, typer.Option(help="Tokens generated per prompt.")] = 40,
+    window: Annotated[int, typer.Option(help="Batched window size (K+1).")] = 5,
+    out: Annotated[Path, typer.Option(help="Calibration file.")] = DEFAULT_CALIBRATION_PATH,
+) -> None:
+    """Measure the batched-vs-sequential logit noise floor of the target on this machine."""
+    from acceptrate.backend.mlx_backend import MLXBackend
+    from acceptrate.bench.selection import select_prompts
+    from acceptrate.bench.workloads import as_chat_messages, load_corpus
+    from acceptrate.trace.manifest import chip_name, package_version
+    from acceptrate.verify.noise_floor import measure_noise_floor, save_noise_floor
+
+    _check_fit(ModelPairConfig(target=DEFAULT_PAIR.target, draft=None))
+    target = MLXBackend.load(DEFAULT_PAIR.target.repo)
+    chosen = select_prompts(load_corpus(), n=prompts)
+    token_lists = [target.tokenizer.encode_chat(as_chat_messages(p)) for p in chosen]
+    floor = measure_noise_floor(
+        target,
+        token_lists,
+        gen_tokens,
+        window,
+        chip=chip_name(),
+        mlx_version=package_version("mlx"),
+    )
+    save_noise_floor(floor, out)
+    typer.echo(
+        f"noise floor over {floor.positions} positions: p50 {floor.p50:.4f}  p99 {floor.p99:.4f}  "
+        f"max {floor.max:.4f}  argmax flips {floor.argmax_flips}  -> {out}"
+    )
+
+
 @verify_app.command("lossless")
 def verify_lossless(
     prompts: Annotated[int, typer.Option(help="Corpus prompts, round-robin over tags.")] = 20,
     k: Annotated[int, typer.Option(help="Draft depth.")] = 4,
     max_tokens: Annotated[int, typer.Option(help="Tokens per generation.")] = 128,
+    calibration: Annotated[Path, typer.Option(help="Noise-floor file.")] = DEFAULT_CALIBRATION_PATH,
 ) -> None:
-    """P2 gate: at temperature 0, speculative output must be token-identical to plain decoding."""
+    """P2 gate: at temperature 0, speculative output must be token-identical to plain decoding.
+
+    A divergence passes only as a near-tie: its sequential top-2 logit margin
+    must be within the calibrated cross-kernel noise floor. Every near-tie is printed.
+    """
     from acceptrate.backend.mlx_backend import MLXBackend
     from acceptrate.bench.selection import select_prompts
     from acceptrate.bench.workloads import as_chat_messages, load_corpus
     from acceptrate.runtime.engine import GenerationContext, generate_plain
     from acceptrate.runtime.speculative import generate_speculative
-    from acceptrate.verify.lossless import compare_generation, summarize
+    from acceptrate.verify.lossless import (
+        Verdict,
+        classify,
+        compare_generation,
+        gate_verdicts,
+        sequential_margin_at,
+    )
+    from acceptrate.verify.noise_floor import load_noise_floor
 
+    if not calibration.exists():
+        _fail(f"no calibration at {calibration}; run 'acceptrate verify calibrate' first")
+    floor = load_noise_floor(calibration)
     _check_fit(DEFAULT_PAIR)
     chosen = select_prompts(load_corpus(), n=prompts)
     target = MLXBackend.load(DEFAULT_PAIR.target.repo)
     draft = MLXBackend.load(DEFAULT_PAIR.draft.repo)  # type: ignore[union-attr]
     eos = target.tokenizer.eos_token_ids
+    typer.echo(
+        f"noise floor {floor.max:.4f} ({floor.chip}, mlx {floor.mlx_version}, n={floor.positions})"
+    )
     reports = []
+    labels = {Verdict.IDENTICAL: "ok  ", Verdict.NEAR_TIE: "TIE ", Verdict.DIVERGENT: "DIFF"}
     for prompt in chosen:
         tokens = target.tokenizer.encode_chat(as_chat_messages(prompt))
         ctx = GenerationContext("verify", prompt.tag, prompt.id, 0)
         plain = generate_plain(target, tokens, max_tokens, eos, ctx, _NULL_GUARD)
         spec = generate_speculative(target, draft, tokens, max_tokens, eos, ctx, _NULL_GUARD, k)
         report = compare_generation(prompt.id, k, plain.tokens, spec.tokens, spec.rows)
+        if not report.matched:
+            margin = sequential_margin_at(target, tokens, plain.tokens, report.first_divergence)
+            report = compare_generation(
+                prompt.id, k, plain.tokens, spec.tokens, spec.rows, margin=margin
+            )
         reports.append(report)
-        verdict = "ok  " if report.matched else "DIFF"
         detail = ""
         if not report.matched:
-            margin = _top2_margin_at(target, tokens, plain.tokens, report.first_divergence)
             detail = (
                 f"  at {report.first_divergence}: plain {report.plain_token} vs "
-                f"spec {report.spec_token}, sequential top-2 margin {margin:.4f}"
+                f"spec {report.spec_token}, margin {report.margin:.4f}"
             )
         typer.echo(
-            f"{verdict} {prompt.id:14s} tokens={report.n_tokens:3d} windows={report.windows:3d} "
-            f"alpha={report.alpha:.2f}{detail}"
+            f"{labels[classify(report, floor)]} {prompt.id:14s} tokens={report.n_tokens:3d} "
+            f"windows={report.windows:3d} alpha={report.alpha:.2f}{detail}"
         )
-    matched, total = summarize(reports)
-    typer.echo(f"greedy equivalence K={k}: {matched}/{total} token-identical")
-    if matched != total:
+    passed, counts = gate_verdicts(reports, floor)
+    typer.echo(
+        f"greedy equivalence K={k}: {counts[Verdict.IDENTICAL]} identical, "
+        f"{counts[Verdict.NEAR_TIE]} near-tie (within noise floor), "
+        f"{counts[Verdict.DIVERGENT]} divergent of {len(reports)}"
+    )
+    if not passed:
         _fail("P2 gate: FAIL")
     typer.echo("P2 gate: PASS")
-
-
-def _top2_margin_at(target, prompt_tokens, plain_tokens, index: int) -> float:
-    """Replay plain decoding to `index` and return logit(top1) - logit(top2) there.
-
-    A divergence at a margin below the measured cross-kernel noise (~0.1) is
-    a near-tie the batched and sequential Metal kernels resolve differently,
-    not a bug in the speculative logic.
-    """
-    import numpy as np
-
-    logits = target.prefill(prompt_tokens)
-    for token in plain_tokens[:index]:
-        logits = target.decode_step(token)
-    top2 = np.partition(logits, -2)[-2:]
-    return float(top2[1] - top2[0])
 
 
 class _NullSnapshot:
