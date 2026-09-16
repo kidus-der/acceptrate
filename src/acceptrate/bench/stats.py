@@ -30,11 +30,15 @@ def median_iqr(values: Sequence[float]) -> MedianIQR:
         raise ValueError("median_iqr needs at least one value")
     ordered = sorted(values)
     mid = len(ordered) // 2
-    lower = ordered[:mid]
-    upper = ordered[mid + 1 :] if len(ordered) % 2 else ordered[mid:]
-    q1 = median(lower) if lower else ordered[0]
-    q3 = median(upper) if upper else ordered[-1]
-    return MedianIQR(median=float(median(ordered)), q1=float(q1), q3=float(q3), n=len(ordered))
+    # Tukey hinges: for odd n the median belongs to both halves.
+    lower = ordered[: mid + 1] if len(ordered) % 2 else ordered[:mid]
+    upper = ordered[mid:]
+    return MedianIQR(
+        median=float(median(ordered)),
+        q1=float(median(lower)),
+        q3=float(median(upper)),
+        n=len(ordered),
+    )
 
 
 def throughput_tok_s(rows: Sequence[WindowRow]) -> float:
