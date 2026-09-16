@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+
 from acceptrate.profile import (
     MachineProfile,
     default_profile_path,
@@ -15,7 +16,6 @@ from acceptrate.profile import (
     save_profile,
     scheduler_priors,
 )
-
 from tests.fakes import FakeBackend
 
 
@@ -54,9 +54,8 @@ def test_alpha_prior_reflects_a_bad_draft() -> None:
 
 def test_roundtrip_through_json(tmp_path: Path) -> None:
     profile = MachineProfile(
-        chip="Apple M4", mlx_version="0.32.2", target="t", draft="d", created_at="2026-09-16T00:00:00Z",
-        baseline_tok_s=20.5, c_by_k={1: 0.19, 4: 0.12}, alpha_prior=0.7,
-    )  # fmt: skip
+        "Apple M4", "0.32.2", "t", "d", "2026-09-16T00:00:00Z", 20.5, {1: 0.19, 4: 0.12}, 0.7
+    )
     path = tmp_path / "profile.json"
 
     save_profile(profile, path)
