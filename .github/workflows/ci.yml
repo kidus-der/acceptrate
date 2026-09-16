@@ -24,3 +24,12 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run pytest -m "not model and not perf"
       - run: uv run python -m acceptrate.design --check
+
+  tui:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tui/go.mod
+      - run: cd tui && go vet ./... && gofmt -l . && go test ./...
