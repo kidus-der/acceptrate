@@ -53,16 +53,20 @@ windows AS (
                / NULLIF(SUM(n_accepted + (n_accepted < k_proposed)::INTEGER), 0) AS alpha,
            SUM(n_accepted)::DOUBLE / NULLIF(SUM(k_proposed), 0) AS accept_frac,
            MEDIAN(CASE WHEN k_proposed > 0 AND verify_ms > 0
-                       THEN draft_ms / k_proposed / verify_ms END) AS c
+                       THEN draft_ms / k_proposed / verify_ms END) AS c,
+           MEDIAN(verify_ms) AS verify_ms_median,
+           MEDIAN(window_ms) AS window_ms_median
     FROM rows
     GROUP BY ALL
 )
 SELECT w.target, w.max_tokens, w.session, w.draft, w.k, w.workload_tag,
        w.n_windows, r.n_generations, w.alpha, w.accept_frac, w.c,
+       w.verify_ms_median, w.window_ms_median,
        r.tok_s_median, r.tok_s_q1, r.tok_s_q3, r.tok_s_q3 - r.tok_s_q1 AS tok_s_iqr
 FROM windows w
 JOIN rates r
   ON w.target = r.target AND w.max_tokens = r.max_tokens
+ AND w.session = r.session
  AND w.draft IS NOT DISTINCT FROM r.draft
  AND w.k = r.k AND w.workload_tag = r.workload_tag
 ORDER BY w.target, w.max_tokens, w.draft NULLS FIRST, w.k, w.workload_tag
@@ -76,13 +80,27 @@ def _aggregate(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def _with_baseline(cells: pl.DataFrame) -> pl.DataFrame:
+    """Join each cell to the K=0 cell of the same session and tag.
+
+    Adds baseline_tok_s, measured_speedup, and v = the cell's median verify
+    pass over the baseline's median plain step — the measured cost of one
+    verification relative to one decode step, which the closed form assumes
+    is exactly 1.
+    """
     baseline = (
         cells.filter(pl.col("k") == 0)
-        .select([*BASELINE_KEY, pl.col("tok_s_median").alias("baseline_tok_s")])
+        .select(
+            [
+                *BASELINE_KEY,
+                pl.col("tok_s_median").alias("baseline_tok_s"),
+                pl.col("window_ms_median").alias("baseline_step_ms"),
+            ]
+        )
         .unique(subset=list(BASELINE_KEY))
     )
     return cells.join(baseline, on=list(BASELINE_KEY), how="left").with_columns(
-        measured_speedup=pl.col("tok_s_median") / pl.col("baseline_tok_s")
+        measured_speedup=pl.col("tok_s_median") / pl.col("baseline_tok_s"),
+        v=pl.col("verify_ms_median") / pl.col("baseline_step_ms"),
     )
 
 
