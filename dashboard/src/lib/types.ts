@@ -19,4 +19,6 @@ export interface Stats {
   readonly accepted_total: number;
   readonly proposed_total: number;
   readonly last_windows: readonly WindowSummary[];
+  /** verify pass over K+1 tokens relative to one plain step, per K (docs/gates/P4.md) */
+  readonly v_by_k: Readonly<Record<number, number>>;
 }

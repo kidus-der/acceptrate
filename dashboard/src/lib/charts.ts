@@ -2,7 +2,8 @@
 // the design tokens at render time (canvas cannot read CSS custom properties).
 import type uPlot from 'uplot';
 
-import { K_MAX, speedupCurve } from './speedup';
+import { K_MAX, speedupCurveCorrected } from './speedup';
+import type { VTable } from './speedup';
 
 export interface Palette {
   readonly ink: string;
@@ -24,9 +25,15 @@ const BREAK_EVEN_DASH = [6, 4];
 /** Minimum pixels between K ticks, so every integer K gets a label on a normal panel. */
 const K_TICK_SPACE_PX = 24;
 
-/** [K, speedup(K), 1.0 break-even, current-K marker] for uPlot. */
-export function curveColumns(alpha: number, c: number, kCurrent: number, kMax: number = K_MAX): CurveColumns {
-  const { ks, values } = speedupCurve(alpha, c, kMax);
+/** [K, speedup(K), 1.0 break-even, current-K marker] for uPlot — the corrected curve. */
+export function curveColumns(
+  alpha: number,
+  cPlain: number,
+  kCurrent: number,
+  table: VTable,
+  kMax: number = K_MAX,
+): CurveColumns {
+  const { ks, values } = speedupCurveCorrected(alpha, cPlain, table, kMax);
   return [
     [...ks],
     [...values],

@@ -1,6 +1,8 @@
 // The SSE client against a fake EventSource: frames, heartbeats, backoff.
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
+import { M4_V_BY_K } from './speedup';
+
 import { BACKOFF_BASE_MS, BACKOFF_MAX_MS, StatsClient, backoffMs } from './client';
 import type { EventSourceLike, StatsHandlers } from './client';
 
@@ -15,6 +17,7 @@ const PAYLOAD = {
   accepted_total: 0,
   proposed_total: 0,
   last_windows: [],
+  v_by_k: M4_V_BY_K,
 };
 
 class FakeSource implements EventSourceLike {

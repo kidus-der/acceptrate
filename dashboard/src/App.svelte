@@ -6,13 +6,15 @@
   import Header from './lib/components/Header.svelte';
   import Timeseries from './lib/components/Timeseries.svelte';
   import WindowStrip from './lib/components/WindowStrip.svelte';
-  import { costRatio } from './lib/stats';
+  import { M4_V_BY_K } from './lib/speedup';
+  import { costRatioPlain } from './lib/stats';
   import { connect, disconnect, live, startDemo, toggleDemo } from './lib/store.svelte';
   import { readPalette, theme, watchTheme } from './lib/theme.svelte';
 
   const stats = $derived(live.stats);
   const alpha = $derived(stats?.alpha_ewma ?? null);
-  const c = $derived(stats === null ? null : costRatio(stats.last_windows));
+  const vTable = $derived(stats === null ? M4_V_BY_K : stats.v_by_k);
+  const c = $derived(stats === null ? null : costRatioPlain(stats.last_windows, vTable));
   const palette = $derived.by(() => {
     void theme.dark; // re-read the tokens when the scheme flips
     return readPalette();
@@ -47,7 +49,7 @@
     <p class="data text-sm" role="alert" style="color: var(--color-rejected)">{live.error}</p>
   {/if}
   <div class="grid gap-4 lg:grid-cols-[3fr_2fr]">
-    <Calculator {alpha} {c} k={stats?.k_current ?? 0} tokS={stats?.tok_s_recent ?? null} {palette} />
+    <Calculator {alpha} {c} k={stats?.k_current ?? 0} tokS={stats?.tok_s_recent ?? null} {palette} {vTable} />
     <Explainer />
   </div>
   <Timeseries history={live.history} {palette} />

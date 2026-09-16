@@ -71,3 +71,14 @@ describe('speedupCurve', () => {
     expect(curve.values[3]).toBeCloseTo(1.71, 2);
   });
 });
+
+describe('corrected form (measured verify cost)', () => {
+  test('matches the brief with v = 1 and pins the P4 table default', async () => {
+    const { speedupCorrected, bestKCorrected, vAt, M4_V_BY_K, speedup, bestK } = await import('./speedup');
+    expect(speedupCorrected(0.7, 4, 0.16, 1.0)).toBeCloseTo(speedup(0.7, 4, 0.16), 12);
+    expect(vAt(M4_V_BY_K, 8)).toBe(2.96);
+    expect(vAt(M4_V_BY_K, 10)).toBeCloseTo(2.96 + 2 * 0.48, 9);
+    expect(bestK(0.85, 0.16)).toBeGreaterThanOrEqual(4);
+    expect(bestKCorrected(0.85, 0.16, M4_V_BY_K, 8)).toBe(2);
+  });
+});

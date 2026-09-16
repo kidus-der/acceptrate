@@ -1,3 +1,4 @@
+import { M4_V_BY_K } from './speedup';
 // The brief's scripted generation, replayed when no server is reachable.
 // A port of tui/internal/mock/scenario.go: alpha climbs 0.45 -> 0.80 while K
 // steps 4 -> 6 and throughput pulls away from the baseline.
@@ -102,6 +103,7 @@ export function demoScenario(): Scenario {
       accepted_total: accepted,
       proposed_total: proposed,
       last_windows: windows.slice(Math.max(0, windows.length - LAST_WINDOWS)),
+      v_by_k: M4_V_BY_K,
     };
   });
   const last = steps[n - 1];

@@ -2,6 +2,8 @@
 // the `event: stats` frames of /stats/stream.
 import { describe, expect, test } from 'vitest';
 
+import { M4_V_BY_K } from './speedup';
+
 import { StatsParseError, costRatio, parseStats } from './stats';
 import type { WindowSummary } from './types';
 
@@ -18,6 +20,7 @@ const PAYLOAD = {
   accepted_total: 0,
   proposed_total: 27,
   last_windows: [WINDOW],
+  v_by_k: M4_V_BY_K,
 };
 
 describe('parseStats', () => {

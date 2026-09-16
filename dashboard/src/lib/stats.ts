@@ -1,5 +1,6 @@
 // The boundary with `acceptrate serve`: validate every stats frame before it
 // touches the store, and derive the one number the server does not send (c).
+import { M4_V_BY_K, vAt } from './speedup';
 import type { Stats, WindowSummary } from './types';
 
 export class StatsParseError extends Error {
@@ -69,6 +70,21 @@ function decode(input: unknown): unknown {
 }
 
 /** Validate a /stats body or an SSE `data:` payload; throws StatsParseError on any drift. */
+/** v_by_k arrives keyed by string; missing or malformed falls back to the M4 table. */
+export function parseVTable(input: unknown): Readonly<Record<number, number>> {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    return M4_V_BY_K;
+  }
+  const out: Record<number, number> = {};
+  for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    const k = Number(key);
+    if (Number.isInteger(k) && k >= 1 && typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      out[k] = value;
+    }
+  }
+  return Object.keys(out).length === 0 ? M4_V_BY_K : out;
+}
+
 export function parseStats(input: unknown): Stats {
   const obj = asRecord(decode(input), 'stats');
   const windows = obj['last_windows'];
@@ -86,6 +102,7 @@ export function parseStats(input: unknown): Stats {
     accepted_total: num(obj, 'accepted_total'),
     proposed_total: num(obj, 'proposed_total'),
     last_windows: windows.map(parseWindow),
+    v_by_k: parseVTable(obj['v_by_k']),
   };
 }
 
@@ -99,6 +116,20 @@ function median(values: readonly number[]): number {
  * Measured draft cost ratio c: median over speculative windows of
  * (draft_ms / k_proposed) / verify_ms. Null until a window has both times.
  */
+/**
+ * Draft cost per token in plain-step units: median over speculative windows of
+ * (draft_ms / k) / verify_ms * v(k). This is what the corrected curve takes.
+ */
+export function costRatioPlain(
+  windows: readonly WindowSummary[],
+  table: Readonly<Record<number, number>>,
+): number | null {
+  const ratios = windows
+    .filter((w) => w.k_proposed > 0 && w.verify_ms > 0)
+    .map((w) => (w.draft_ms / w.k_proposed / w.verify_ms) * vAt(table, w.k_proposed));
+  return ratios.length === 0 ? null : median(ratios);
+}
+
 export function costRatio(windows: readonly WindowSummary[]): number | null {
   const ratios = windows
     .filter((w) => w.k_proposed > 0 && w.verify_ms > 0)

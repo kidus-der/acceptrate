@@ -2,7 +2,8 @@
   // The brief's calculator made live: alpha and c are measured, K is marked.
   import { curveColumns, curveOptions } from '../charts';
   import type { Palette } from '../charts';
-  import { bestK, speedup } from '../speedup';
+  import { bestKCorrected, speedupCorrected, vAt } from '../speedup';
+  import type { VTable } from '../speedup';
   import Chart from './Chart.svelte';
   import Readout from './Readout.svelte';
 
@@ -12,19 +13,22 @@
     k: number;
     tokS: number | null;
     palette: Palette;
+    vTable: VTable;
   }
 
-  let { alpha, c, k, tokS, palette }: Props = $props();
+  let { alpha, c, k, tokS, palette, vTable }: Props = $props();
 
   const ready = $derived(alpha !== null && c !== null);
   const opts = $derived(curveOptions(palette));
-  const data = $derived(ready ? curveColumns(alpha as number, c as number, k) : null);
-  const best = $derived(ready ? bestK(alpha as number, c as number) : null);
-  const now = $derived(ready && k >= 0 ? speedup(alpha as number, k, c as number) : null);
+  const data = $derived(ready ? curveColumns(alpha as number, c as number, k, vTable) : null);
+  const best = $derived(ready ? bestKCorrected(alpha as number, c as number, vTable) : null);
+  const now = $derived(
+    ready && k >= 0 ? speedupCorrected(alpha as number, k, c as number, vAt(vTable, k)) : null,
+  );
 </script>
 
 <section class="panel min-w-0 p-4" aria-labelledby="calc-title">
-  <h2 id="calc-title" class="panel-title mb-3">speedup vs K · measured α and c</h2>
+  <h2 id="calc-title" class="panel-title mb-3">speedup vs K · measured α, c and v(K)</h2>
   {#if data !== null}
     <Chart {opts} {data} label="Speedup versus draft depth K, current K marked" />
   {:else}
