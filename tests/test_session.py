@@ -12,7 +12,7 @@ import threading
 import pytest
 
 from acceptrate.runtime.engine import GenerationContext, generate_plain
-from acceptrate.serve.session import Event, Session, SessionBusy
+from acceptrate.serve.session import Event, Session, SessionBusyError
 from tests.fakes import FakeBackend, FakeTokenizer
 from tests.serve_fakes import EosTokenizer, HoldableBackend
 
@@ -99,14 +99,16 @@ def test_k_zero_with_a_draft_falls_back_to_plain_decoding() -> None:
 
 def test_eos_ends_the_generation_with_stop_and_is_not_decoded_into_text() -> None:
     plain = _plain_tokens(FakeTokenizer(), 30)
-    tok = EosTokenizer(frozenset({plain[4]}))
+    eos_token = plain[4]
+    first_hit = plain.index(eos_token)  # the fake's rule cycles, so it may appear earlier
+    tok = EosTokenizer(frozenset({eos_token}))
 
     tokens, text, last = _drain(
         _session(k=2, draft=FakeBackend(V), tokenizer=tok).generate(MESSAGES, 30)
     )
 
-    assert tokens == plain[:5]
-    assert text == tok.decode(plain[:4])
+    assert tokens == plain[: first_hit + 1]
+    assert text == tok.decode(plain[:first_hit])
     assert last.finish_reason == "stop"
 
 
@@ -134,7 +136,7 @@ def test_a_second_generation_is_refused_while_one_is_running() -> None:
     assert backend.entered.wait(2.0)
 
     assert session.busy is True
-    with pytest.raises(SessionBusy):
+    with pytest.raises(SessionBusyError):
         session.generate(MESSAGES, 10)
 
     backend.gate.set()
