@@ -25,7 +25,7 @@ import numpy as np
 
 from acceptrate.backend.protocol import Backend
 from acceptrate.model.estimator import AcceptanceEstimator
-from acceptrate.model.speedup import M4_V_BY_K, best_k_corrected, v_at
+from acceptrate.model.speedup import M4_V_BY_K, best_k_corrected, speedup_corrected, v_at
 from acceptrate.runtime.engine import MS, GenerationContext, GenerationResult, GuardReader
 from acceptrate.trace.schema import WindowRow
 
@@ -41,6 +41,9 @@ class SchedulerConfig:
     warmup_windows: int
     v_by_k: Mapping[int, float] = field(default_factory=lambda: dict(M4_V_BY_K))
     """Verify pass relative to a plain step, per K (docs/gates/P4.md); from the profile."""
+    switch_margin: float = 0.03
+    """Relative predicted gain a different K must show over the current one before switching.
+    P5's first run flickered between K=1 and K=2 on sub-percent edges and lost 1.4% to it."""
 
     def __post_init__(self) -> None:
         if self.k_min < 1:
@@ -72,6 +75,7 @@ class AdaptiveScheduler:
         self._c = config.prior_c
         self._c_decay = self._alpha.decay
         self.windows = 0
+        self._current: int | None = None
 
     @property
     def alpha(self) -> float:
@@ -81,9 +85,20 @@ class AdaptiveScheduler:
     def c(self) -> float:
         return self._c
 
+    def _predicted(self, k: int) -> float:
+        return speedup_corrected(self._alpha.alpha, k, self._c, v_at(self.config.v_by_k, k))
+
     def next_k(self) -> int:
-        k = best_k_corrected(self._alpha.alpha, self._c, self.config.v_by_k, self.config.k_max)
-        return min(self.config.k_max, max(self.config.k_min, k))
+        cfg = self.config
+        best = best_k_corrected(self._alpha.alpha, self._c, cfg.v_by_k, cfg.k_max)
+        best = min(cfg.k_max, max(cfg.k_min, best))
+        current = self._current
+        if current is not None and best != current:
+            gain = self._predicted(best) / self._predicted(current) - 1.0
+            if gain < cfg.switch_margin:
+                best = current
+        self._current = best
+        return best
 
     def observe(self, k_proposed: int, n_accepted: int, draft_ms: float, verify_ms: float) -> None:
         self._alpha = self._alpha.update(k_proposed, n_accepted)
