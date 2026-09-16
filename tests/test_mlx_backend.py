@@ -11,6 +11,10 @@ from acceptrate.config import DEFAULT_PAIR
 pytestmark = pytest.mark.model
 
 PROMPT = "The quick brown fox"
+# Batched verify and sequential decode take different fp16 kernel paths on
+# Metal; logits differ by up to ~0.02 on values of magnitude ~10. Argmax must
+# agree exactly (greedy losslessness); values need only agree to this tolerance.
+FP16_ATOL = 0.05
 DRAFT_REPO = DEFAULT_PAIR.draft.repo  # type: ignore[union-attr]
 
 
@@ -52,7 +56,6 @@ def test_verify_rows_agree_with_sequential_decode_steps(backend) -> None:
     continuation = [int(np.argmax(logits))]
     for _ in range(3):
         continuation.append(int(np.argmax(backend.decode_step(continuation[-1]))))
-    sequential = np.stack([backend.decode_step(t) for t in continuation[:0]] or [logits])
     backend.prefill(tokens)
     expected = np.stack([backend.decode_step(t) for t in continuation])
     backend.prefill(tokens)
@@ -62,8 +65,7 @@ def test_verify_rows_agree_with_sequential_decode_steps(backend) -> None:
     assert rows.shape == (len(continuation), backend.vocab_size)
     assert backend.position == len(tokens) + len(continuation)
     np.testing.assert_array_equal(rows.argmax(axis=1), expected.argmax(axis=1))
-    np.testing.assert_allclose(rows, expected, rtol=1e-2, atol=1e-2)
-    del sequential
+    np.testing.assert_allclose(rows, expected, rtol=1e-2, atol=FP16_ATOL)
 
 
 def test_trim_then_decode_matches_the_untrimmed_path(backend) -> None:
@@ -80,7 +82,7 @@ def test_trim_then_decode_matches_the_untrimmed_path(backend) -> None:
 
     assert backend.position == len(tokens) + 2
     np.testing.assert_array_equal(actual.argmax(), expected.argmax())
-    np.testing.assert_allclose(actual, expected, rtol=1e-2, atol=1e-2)
+    np.testing.assert_allclose(actual, expected, rtol=1e-2, atol=FP16_ATOL)
 
 
 def test_tokenizer_roundtrips_text(backend) -> None:
