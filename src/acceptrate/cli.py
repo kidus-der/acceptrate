@@ -299,7 +299,7 @@ def bench_sweep(
             f"IQR [{arm.tok_s.q1:.2f}, {arm.tok_s.q3:.2f}] n={arm.tok_s.n} "
             f"windows={arm.windows} dirty={arm.dirty_windows}"
         )
-    typer.echo(f"guard_errors={guard.sample_errors}")
+    typer.echo(f"guard_errors={guard.sample_errors}  pacing_waits={waits[0]}")
 
 
 DEFAULT_P5_OUT = Path("traces/p5")
@@ -387,6 +387,7 @@ def bench_adaptive(
             f"{spec.name:8s} median {arm.tok_s.median:.2f} tok/s IQR [{arm.tok_s.q1:.2f}, "
             f"{arm.tok_s.q3:.2f}] n={arm.tok_s.n} windows={arm.windows} dirty={arm.dirty_windows}"
         )
+    typer.echo(f"guard_errors={guard.sample_errors}  pacing_waits={waits[0]}")
     verdict = score_p5(summary.arms)
     typer.echo(
         f"adaptive {verdict.adaptive_tok_s:.2f} vs best fixed {verdict.best_fixed_name} "
