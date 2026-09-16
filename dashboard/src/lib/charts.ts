@@ -21,6 +21,8 @@ export type CurveColumns = readonly [number[], number[], number[], (number | nul
 const LINE_WIDTH = 2;
 const MARKER_SIZE = 11;
 const BREAK_EVEN_DASH = [6, 4];
+/** Minimum pixels between K ticks, so every integer K gets a label on a normal panel. */
+const K_TICK_SPACE_PX = 24;
 
 /** [K, speedup(K), 1.0 break-even, current-K marker] for uPlot. */
 export function curveColumns(alpha: number, c: number, kCurrent: number, kMax: number = K_MAX): CurveColumns {
@@ -50,7 +52,7 @@ export function curveOptions(p: Palette): Omit<uPlot.Options, 'width' | 'height'
   return {
     scales: { x: { time: false }, y: { range: (_u, min, max) => [Math.min(0.5, min), Math.max(2, max)] } },
     axes: [
-      axis(p, { label: 'draft depth K', labelFont: p.font, incrs: [1] }),
+      axis(p, { label: 'draft depth K', labelFont: p.font, incrs: [1, 2], space: K_TICK_SPACE_PX }),
       axis(p, { label: 'speedup ×', labelFont: p.font, values: (_u, vals) => vals.map(fmt2) }),
     ],
     legend: { show: false },
@@ -79,7 +81,7 @@ export function seriesOptions(p: Palette): Omit<uPlot.Options, 'width' | 'height
       axis(p, { label: 'tok/s', labelFont: p.font }),
       axis(p, { scale: ALPHA_SCALE, side: 1, label: 'α', labelFont: p.font, grid: { show: false } }),
     ],
-    legend: { show: true },
+    legend: { show: false },
     cursor: { show: false },
     series: [
       { label: 'window' },

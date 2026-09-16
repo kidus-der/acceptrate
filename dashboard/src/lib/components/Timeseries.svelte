@@ -17,7 +17,10 @@
 </script>
 
 <section class="panel p-4" aria-labelledby="ts-title">
-  <h2 id="ts-title" class="panel-title mb-3">tok/s and α · last {history.length} windows</h2>
+  <h2 id="ts-title" class="panel-title mb-3">
+    tok/s and α · last {history.length} windows
+    <span class="key data"><span class="tok">—</span> tok/s (left) <span class="alpha">···</span> α (right)</span>
+  </h2>
   {#if history.length > 1}
     <Chart {opts} {data} height={180} label="Tokens per second and acceptance rate over recent windows" />
   {:else}
@@ -26,6 +29,16 @@
 </section>
 
 <style>
+  .key {
+    float: right;
+    letter-spacing: 0;
+  }
+  .tok {
+    color: var(--color-measurement);
+  }
+  .alpha {
+    color: var(--color-accepted);
+  }
   .waiting {
     display: grid;
     place-items: center;

@@ -28,7 +28,6 @@
     color: var(--color-muted);
     font-size: 0.72rem;
     letter-spacing: 0.06em;
-    text-transform: uppercase;
   }
   dd {
     color: var(--color-ink);

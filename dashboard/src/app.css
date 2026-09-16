@@ -31,8 +31,7 @@ html {
 .panel-title {
   color: var(--color-muted);
   font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 /* uPlot's default legend colours assume a light page. */

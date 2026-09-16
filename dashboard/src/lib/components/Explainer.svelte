@@ -30,6 +30,8 @@
 
 <style>
   .equation {
+    white-space: nowrap;
+    overflow-x: auto;
     padding: 0.6rem 0.8rem;
     border-radius: 4px;
     background: var(--color-surface-2);
