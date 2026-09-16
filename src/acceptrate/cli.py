@@ -532,6 +532,44 @@ def verify_distributional(
     typer.echo("distributional check: PASS")
 
 
+@app.command()
+def serve(
+    draft: Annotated[
+        str, typer.Option(help="Draft repo, or 'lookup', or 'none'.")
+    ] = DEFAULT_PAIR.draft.repo,  # type: ignore[union-attr]
+    k: Annotated[int, typer.Option(help="Fixed draft depth (0 = plain decoding).")] = 4,
+    host: Annotated[str, typer.Option(help="Bind address (local only).")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(help="Port.")] = 8321,
+) -> None:
+    """OpenAI-compatible endpoint on localhost plus the live /stats feed the TUI consumes."""
+    from acceptrate.backend.mlx_backend import MLXBackend
+    from acceptrate.bench.guards import SystemGuard
+    from acceptrate.serve.runner import run
+    from acceptrate.serve.session import Session
+
+    use_draft = draft != "none" and k > 0
+    pair = ModelPairConfig(
+        target=DEFAULT_PAIR.target, draft=_draft_spec(draft) if use_draft else None
+    )
+    _check_fit(pair)
+    target = MLXBackend.load(pair.target.repo)
+    draft_backend = _load_draft(draft, target) if use_draft else None
+    with SystemGuard() as guard:
+        session = Session(
+            target,
+            draft_backend,
+            target.tokenizer,
+            lambda: k if use_draft else 0,
+            model=pair.target.repo,
+            draft_name=draft if use_draft else None,
+            guard=lambda: guard.latest,
+        )
+        typer.echo(
+            f"serving {pair.target.repo} (draft={draft if use_draft else 'none'}, K={k}) on http://{host}:{port}"
+        )
+        run(session, host=host, port=port)
+
+
 predictor_app = typer.Typer(no_args_is_help=True)
 app.add_typer(predictor_app, name="predictor", help="The cold-start alpha predictor (P6).")
 DEFAULT_PREDICTOR_PATH = Path("models/predictor.joblib")
