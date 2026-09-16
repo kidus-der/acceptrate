@@ -493,6 +493,40 @@ def _NULL_GUARD() -> _NullSnapshot:  # noqa: N802 — a guard reader, used like 
     return _NullSnapshot()
 
 
+@verify_app.command("distributional")
+def verify_distributional(
+    prompt_id: Annotated[str, typer.Option(help="Corpus prompt to sample from.")] = "prose-001",
+    k: Annotated[int, typer.Option(help="Draft depth.")] = 4,
+    temperature: Annotated[float, typer.Option(help="Sampling temperature > 0.")] = 1.0,
+    n_samples: Annotated[int, typer.Option(help="Samples per path.")] = 400,
+    seed: Annotated[int, typer.Option(help="RNG seed.")] = 0,
+) -> None:
+    """Above temperature 0: the speculative next-token law must match plain sampling (TV bound)."""
+    from acceptrate.backend.mlx_backend import MLXBackend
+    from acceptrate.bench.workloads import as_chat_messages, load_corpus
+    from acceptrate.verify.distributional import passes, run_distributional_check
+
+    if temperature <= 0:
+        _fail("temperature must be > 0; use 'verify lossless' for greedy")
+    _check_fit(DEFAULT_PAIR)
+    prompt = next((p for p in load_corpus() if p.id == prompt_id), None)
+    if prompt is None:
+        _fail(f"unknown prompt id {prompt_id}")
+    target = MLXBackend.load(DEFAULT_PAIR.target.repo)
+    draft = MLXBackend.load(DEFAULT_PAIR.draft.repo)  # type: ignore[union-attr]
+    tokens = target.tokenizer.encode_chat(as_chat_messages(prompt))
+    report, bound = run_distributional_check(
+        target, draft, tokens, k, temperature, n_samples, seed, target.vocab_size
+    )
+    typer.echo(
+        f"{prompt_id} K={k} T={temperature}: TV {report.tv:.4f} vs bound {bound:.4f} "
+        f"(n={report.n_plain}/{report.n_spec})"
+    )
+    if not passes(report, bound):
+        _fail("distributional check: FAIL")
+    typer.echo("distributional check: PASS")
+
+
 predictor_app = typer.Typer(no_args_is_help=True)
 app.add_typer(predictor_app, name="predictor", help="The cold-start alpha predictor (P6).")
 DEFAULT_PREDICTOR_PATH = Path("models/predictor.joblib")
