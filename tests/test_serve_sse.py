@@ -43,6 +43,7 @@ def test_stats_feed_pushes_stats_events_while_a_generation_runs() -> None:
     first = _split(asyncio.run(_consume(session, limit=1)))
     backend.gate.set()
     worker.join(2.0)
+    assert not worker.is_alive()
     later = _split(asyncio.run(_consume(session, limit=2)))
 
     assert first[0][0] == "stats" and first[0][1]["busy"] is True
@@ -67,6 +68,7 @@ def test_stats_feed_wakes_on_a_window_instead_of_waiting_for_the_heartbeat() -> 
 
     frames = _split(asyncio.run(run()))
     worker.join(2.0)
+    assert not worker.is_alive()
 
     assert [name for name, _ in frames] == ["stats", "stats"]
     assert frames[1][1]["windows_total"] >= 1

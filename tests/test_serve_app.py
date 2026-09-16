@@ -155,6 +155,7 @@ def test_a_concurrent_request_is_refused_with_429() -> None:
     assert second.json()["error"]["type"] == "server_busy"
     backend.gate.set()
     worker.join(2.0)
+    assert not worker.is_alive()
     assert first and first[0].status_code == 200
     assert client.get("/healthz").json()["busy"] is False
 
