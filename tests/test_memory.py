@@ -37,7 +37,7 @@ def test_reason_names_the_shortfall_when_refusing() -> None:
     fit = assess_fit(DEFAULT_PAIR, available_bytes=5 * GB)
 
     assert "GB" in fit.reason
-    assert not fit.reason == ""
+    assert fit.reason != ""
 
 
 def test_live_probe_returns_a_positive_byte_count() -> None:
