@@ -62,7 +62,7 @@ def test_streaming_adaptive_equals_batch_adaptive(step_d, offset_d, prompt, max_
             CTX,
             Snap,
             AdaptiveScheduler(_cfg(prior)),
-        )  # fmt: skip
+        )
     )
 
     tokens = tuple(t for toks, _ in events for t in toks)
@@ -83,7 +83,7 @@ def test_first_event_is_the_prefill_token() -> None:
             CTX,
             Snap,
             AdaptiveScheduler(_cfg(0.6)),
-        )  # fmt: skip
+        )
     )
 
     assert events[0] == (((3 * 7) % V,), None)
