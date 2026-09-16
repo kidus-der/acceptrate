@@ -13,13 +13,13 @@ from pathlib import Path
 
 import polars as pl
 
+from acceptrate.analysis.cells import SPECULATION_PARITY
 from acceptrate.analysis.fit import FitReport, residuals_by, with_predictions
 
 CELLS_TABLE = "cells.md"
 SUMMARY_TABLE = "summary.md"
 SUMMARY_JSON = "summary.json"
 LOSES_MARK = "loses"
-SPECULATION_PARITY = 1.0
 
 CELL_COLUMNS: tuple[str, ...] = (
     "draft",

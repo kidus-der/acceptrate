@@ -22,13 +22,12 @@ from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
 
-from acceptrate.analysis.cells import CELL_KEY, DEFAULT_POSITION_BIN
+from acceptrate.analysis.cells import CELL_KEY, DEFAULT_POSITION_BIN, SPECULATION_PARITY
 from acceptrate.analysis.cells import alpha_by_position as alpha_by_position_table
 from acceptrate.analysis.fit import fit_report, with_predictions
 from acceptrate.trace.schema import WORKLOAD_TAGS
 
 PNG_DPI = 150
-SPECULATION_PARITY = 1.0
 NORM_MIN_ARM = 0.01
 """Smallest half-range of the diverging colour scale, so a one-sided grid still centres on 1.0."""
 

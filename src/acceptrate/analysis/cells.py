@@ -24,6 +24,8 @@ import polars as pl
 CELL_KEY: tuple[str, ...] = ("target", "max_tokens", "draft", "k", "workload_tag")
 BASELINE_KEY: tuple[str, ...] = ("target", "max_tokens", "workload_tag")
 ROWS_VIEW = "rows"
+SPECULATION_PARITY = 1.0
+"""Measured speedup at which speculation neither wins nor loses."""
 DEFAULT_POSITION_BIN = 16
 
 CELL_SQL = """
