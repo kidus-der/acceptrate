@@ -109,3 +109,12 @@ def test_compute_stats_on_an_empty_window_is_all_nulls_and_zeros() -> None:
 def test_ewma_alpha_is_per_token_so_a_rejection_counts_as_one_examined() -> None:
     # 2 accepted of 4 proposed: the third was examined and rejected, the fourth never examined
     assert ewma_alpha((_ws(4, 2),)) == pytest.approx(2 / 3)
+
+
+def test_stats_carry_the_machine_verify_cost_table() -> None:
+    from acceptrate.model.speedup import M4_V_BY_K
+    from acceptrate.serve.stats import Totals, compute_stats
+
+    stats = compute_stats((), Totals(0, 0, 0), model="m", draft=None, busy=False, k_current=0)
+
+    assert stats.v_by_k == {str(k): v for k, v in M4_V_BY_K.items()}
