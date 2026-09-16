@@ -581,6 +581,30 @@ def serve(
         run(session, host=host, port=port)
 
 
+TUI_BINARY = Path("tui/bin/acceptrate-tui")
+
+
+@app.command()
+def chat(
+    url: Annotated[str, typer.Option(help="acceptrate serve base URL.")] = "http://127.0.0.1:8321",
+    mock: Annotated[bool, typer.Option("--mock", help="Demo against the in-process mock.")] = False,
+    baseline: Annotated[float, typer.Option(help="Plain tok/s for the ghost marker.")] = 0.0,
+) -> None:
+    """The live terminal view — a separate Go process that only talks HTTP to `serve`."""
+    import shutil
+    import subprocess
+
+    binary = shutil.which("acceptrate-tui") or (str(TUI_BINARY) if TUI_BINARY.exists() else None)
+    if binary is None:
+        _fail("TUI binary not found; run 'make tui' (needs Go) or put acceptrate-tui on PATH")
+    args = [binary, "--url", url]
+    if mock:
+        args.append("--mock")
+    if baseline > 0:
+        args += ["--baseline", str(baseline)]
+    raise typer.Exit(code=subprocess.call(args))
+
+
 predictor_app = typer.Typer(no_args_is_help=True)
 app.add_typer(predictor_app, name="predictor", help="The cold-start alpha predictor (P6).")
 DEFAULT_PREDICTOR_PATH = Path("models/predictor.joblib")
