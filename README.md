@@ -18,7 +18,7 @@ alongside positive ones.
 | P1 measurement rig | same config twice, median tok/s within 2% | **pass** — 0.14%, [evidence](docs/gates/P1.md) |
 | P2 losslessness | 20 prompts at T=0, token-identical, 20/20 | **pass** — 19 identical + 1 near-tie within the calibrated 0.10 noise floor, [evidence](docs/gates/P2.md) |
 | P3 the sweep | ≥ 50 000 clean draft windows, 0 rows page_ins > 0 | **pass** — 70,290 clean windows, [evidence](docs/gates/P3.md) |
-| P4 analytical fit | predicted vs measured R² > 0.85 | |
+| P4 analytical fit | predicted vs measured R² > 0.85 | **pass** — R² 0.970 with the measured verify factor (brief's form: −12.5), [evidence](docs/gates/P4.md) |
 | P5 adaptive runtime | adaptive K beats best fixed K by ≥ 5% | |
 | P6 predictor + TUI | predictor beats constant prior; TUI ≥ 30 fps | |
 | P7 report | `make reproduce` regenerates every figure | |
