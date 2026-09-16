@@ -83,7 +83,9 @@ def ewma_alpha(window: Sequence[WindowStat], decay: float = EWMA_DECAY) -> float
     for stat in window:
         if stat.k_proposed <= 0:
             continue
-        rate = stat.n_accepted / stat.k_proposed
+        # per-token acceptance: a rejection is one examined token (same alpha the scheduler uses)
+        examined = stat.n_accepted + 1 if stat.n_accepted < stat.k_proposed else stat.k_proposed
+        rate = stat.n_accepted / examined
         ewma = rate if ewma is None else (1 - decay) * ewma + decay * rate
     return ewma
 
