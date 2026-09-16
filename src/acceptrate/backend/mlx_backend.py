@@ -20,6 +20,11 @@ from mlx_lm.models.cache import make_prompt_cache, trim_prompt_cache
 
 from acceptrate.backend.protocol import ChatMessage, LogitRows, Logits
 
+CACHE_LIMIT_BYTES = 512 * 1024 * 1024
+"""MLX's default buffer-cache limit is all of physical memory; on 16 GB that
+grows until the kernel reports pressure and the guards discard every window.
+512 MB keeps hot buffers reusable without starving the OS."""
+
 
 @dataclass(frozen=True)
 class MLXTokenizer:
@@ -63,6 +68,7 @@ class MLXBackend:
 
     @classmethod
     def load(cls, repo: str) -> MLXBackend:
+        mx.set_cache_limit(CACHE_LIMIT_BYTES)
         model, wrapper, config = mlx_lm.load(repo, return_config=True)
         vocab_size = int(config["vocab_size"])
         return cls(model, MLXTokenizer.from_wrapper(wrapper), vocab_size)
@@ -91,6 +97,10 @@ class MLXBackend:
     def verify(self, tokens: Sequence[int]) -> LogitRows:
         logits = self._forward(tokens)
         return np.array(logits.astype(mx.float32), copy=False)
+
+    def relieve(self) -> None:
+        """Return cached (unused) Metal buffers to the OS. Never called inside the hot loop."""
+        mx.clear_cache()
 
     def trim(self, n: int) -> None:
         if n <= 0:
