@@ -12,18 +12,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-
-def first_divergence(a: Sequence[int], b: Sequence[int]) -> int | None:
-    """Index of the first position where `a` and `b` differ, or None if identical.
-
-    A sequence that is a strict prefix of the other diverges at its own length.
-    """
-    for index, (x, y) in enumerate(zip(a, b, strict=False)):
-        if x != y:
-            return index
-    if len(a) != len(b):
-        return min(len(a), len(b))
-    return None
+from acceptrate.verify.lossless import first_divergence
 
 
 @dataclass(frozen=True, slots=True)
