@@ -24,7 +24,7 @@ func TestRenderBar(t *testing.T) {
 		{"clamped above one", 1.7, 3, -1, "███"},
 		{"clamped below zero", -0.2, 3, -1, "░░░"},
 		{"ghost marker on the empty part", 0.25, 8, 0.75, "██░░░░┆░"},
-		{"ghost marker inside the filled part", 0.75, 8, 0.25, "██┆█████"},
+		{"ghost marker inside the filled part", 0.75, 8, 0.25, "██┆███░░"},
 		{"zero width", 0.5, 0, -1, ""},
 	}
 	for _, tt := range tests {
