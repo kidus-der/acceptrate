@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 
 from acceptrate.bench.runner import (
     Arm,
@@ -67,7 +68,7 @@ def test_schedule_interleaves_arms_and_rotates_which_goes_first() -> None:
     jobs = interleaved_schedule(arms, PROMPTS, reps=1, warmup=0)
 
     names = [j.arm.name for j in jobs]
-    assert all(a != b for a, b in zip(names, names[1:], strict=False))
+    assert all(a != b for a, b in pairwise(names))
     assert names[0] != names[2]  # the leading arm alternates prompt to prompt
 
 
