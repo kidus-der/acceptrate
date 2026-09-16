@@ -24,6 +24,7 @@ from time import perf_counter
 import numpy as np
 
 from acceptrate.backend.protocol import Backend
+from acceptrate.runtime.adaptive import Scheduler
 from acceptrate.runtime.engine import MS, GenerationContext, GuardReader
 from acceptrate.trace.schema import WindowRow
 
@@ -127,6 +128,84 @@ def generate_speculative_streaming(
             max(before.thermal_level, after.thermal_level),
             prompt_id, rep, (w3 - w0) * MS,
         )  # fmt: skip
+        window_idx += 1
+        pending = [drafts[k - 1], correction] if n == k else [correction]
+        last = correction
+        committed: list[int] = []
+        stopped_on_eos = False
+        for token in (*drafts[:n], correction):
+            committed.append(token)
+            produced += 1
+            if token in eos:
+                stopped_on_eos = True
+                break
+            if produced >= max_tokens:
+                break
+        yield tuple(committed), row
+        if stopped_on_eos:
+            return
+
+
+def generate_adaptive_streaming(
+    target: Backend,
+    draft: Backend,
+    prompt: Sequence[int],
+    max_tokens: int,
+    eos: frozenset[int],
+    ctx: GenerationContext,
+    guard: GuardReader,
+    scheduler: Scheduler,
+) -> Iterator[StreamEvent]:
+    """Greedy speculative decoding with K chosen per window, yielding each window as it commits.
+
+    Mirrors runtime/adaptive.generate_adaptive line for line; the test suite
+    asserts token-for-token and row-for-row equality.
+    """
+    if not prompt:
+        raise ValueError("prompt must contain at least one token")
+    run_id, tag, prompt_id, rep = ctx.run_id, ctx.workload_tag, ctx.prompt_id, ctx.rep
+
+    logits = target.prefill(prompt)
+    draft.prefill(prompt)
+    last = int(np.argmax(logits))
+    produced = 1
+    yield (last,), None
+    if last in eos or produced >= max_tokens:
+        return
+
+    pending = [last]
+    window_idx = 0
+    while produced < max_tokens:
+        k = scheduler.next_k()
+        before = guard()
+        w0 = perf_counter()
+        d_logits = draft.verify(pending)[-1]
+        drafts = [int(np.argmax(d_logits))]
+        for i in range(1, k):
+            d_logits = draft.decode_step(drafts[i - 1])
+            drafts.append(int(np.argmax(d_logits)))
+        w1 = perf_counter()
+        verify_rows = target.verify([last, *drafts])
+        w2 = perf_counter()
+        argmaxes = np.argmax(verify_rows, axis=1)
+        n = 0
+        while n < k and drafts[n] == argmaxes[n]:
+            n += 1
+        correction = int(argmaxes[n])
+        target.trim(k - n)
+        draft.trim(max(0, k - 1 - n))
+        w3 = perf_counter()
+        after = guard()
+        draft_ms = (w1 - w0) * MS
+        verify_ms = (w2 - w1) * MS
+        row: WindowRow = (
+            run_id, window_idx, produced, k, n, draft_ms, verify_ms, tag,
+            max(before.mem_pressure, after.mem_pressure),
+            after.page_ins - before.page_ins,
+            max(before.thermal_level, after.thermal_level),
+            prompt_id, rep, (w3 - w0) * MS,
+        )  # fmt: skip
+        scheduler.observe(k, n, draft_ms, verify_ms)
         window_idx += 1
         pending = [drafts[k - 1], correction] if n == k else [correction]
         last = correction
