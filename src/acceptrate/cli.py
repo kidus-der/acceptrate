@@ -205,7 +205,13 @@ def verify_lossless(
         report = compare_generation(prompt.id, k, plain.tokens, spec.tokens, spec.rows)
         reports.append(report)
         verdict = "ok  " if report.matched else "DIFF"
-        detail = "" if report.matched else f"  at {report.first_divergence}"
+        detail = ""
+        if not report.matched:
+            margin = _top2_margin_at(target, tokens, plain.tokens, report.first_divergence)
+            detail = (
+                f"  at {report.first_divergence}: plain {report.plain_token} vs "
+                f"spec {report.spec_token}, sequential top-2 margin {margin:.4f}"
+            )
         typer.echo(
             f"{verdict} {prompt.id:14s} tokens={report.n_tokens:3d} windows={report.windows:3d} "
             f"alpha={report.alpha:.2f}{detail}"
@@ -215,6 +221,22 @@ def verify_lossless(
     if matched != total:
         _fail("P2 gate: FAIL")
     typer.echo("P2 gate: PASS")
+
+
+def _top2_margin_at(target, prompt_tokens, plain_tokens, index: int) -> float:
+    """Replay plain decoding to `index` and return logit(top1) - logit(top2) there.
+
+    A divergence at a margin below the measured cross-kernel noise (~0.1) is
+    a near-tie the batched and sequential Metal kernels resolve differently,
+    not a bug in the speculative logic.
+    """
+    import numpy as np
+
+    logits = target.prefill(prompt_tokens)
+    for token in plain_tokens[:index]:
+        logits = target.decode_step(token)
+    top2 = np.partition(logits, -2)[-2:]
+    return float(top2[1] - top2[0])
 
 
 class _NullSnapshot:
