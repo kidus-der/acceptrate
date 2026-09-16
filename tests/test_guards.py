@@ -246,6 +246,8 @@ def test_sample_now_raises_instead_of_counting() -> None:
 
 
 def test_start_twice_is_an_error() -> None:
-    with SystemGuard(sampler=_counting_sampler(), interval_s=FAST_INTERVAL_S) as guard:
-        with pytest.raises(RuntimeError):
-            guard.start()
+    with (
+        SystemGuard(sampler=_counting_sampler(), interval_s=FAST_INTERVAL_S) as guard,
+        pytest.raises(RuntimeError),
+    ):
+        guard.start()

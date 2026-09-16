@@ -24,14 +24,17 @@ from __future__ import annotations
 import mmap
 import re
 import subprocess
+import threading
+import time
 from collections.abc import Callable, Sequence
-from typing import NamedTuple
+from typing import NamedTuple, Self
 
 import psutil
 
 THERMAL_COMMAND = ("pmset", "-g", "therm")
 MEM_PRESSURE_COMMAND = ("sysctl", "-n", "kern.memorystatus_vm_pressure_level")
 COMMAND_TIMEOUT_S = 5.0
+DEFAULT_INTERVAL_S = 1.0
 
 THERMAL_LIMIT_KEYS = ("CPU_Speed_Limit", "CPU_Scheduler_Limit")
 THERMAL_NOMINAL_NOTE = re.compile(r"^Note: No .* recorded", re.MULTILINE)
@@ -141,3 +144,91 @@ def dirty_reason(before: GuardSnapshot, after: GuardSnapshot) -> str:
 def is_clean(before: GuardSnapshot, after: GuardSnapshot) -> bool:
     """True if no page-ins landed and neither end was under pressure or throttled."""
     return dirty_reason(before, after) == ""
+
+
+# --- the 1 Hz guard -----------------------------------------------------------
+
+
+def take_snapshot(run: Runner = run_command) -> GuardSnapshot:
+    """One synchronous reading of all three sources."""
+    return GuardSnapshot(
+        mem_pressure=sample_mem_pressure(run),
+        page_ins=sample_page_ins(),
+        thermal_level=sample_thermal(run),
+        sampled_at=time.perf_counter(),
+    )
+
+
+class SystemGuard:
+    """Samples the machine on a daemon thread and publishes the latest GuardSnapshot.
+
+    `latest` is a plain attribute read (atomic reference swap on the writer
+    side), so the hot loop pays nothing and takes no lock. Sampler failures on
+    the thread are counted in `sample_errors` and kept in `last_error`; the
+    previous good snapshot stays published.
+    """
+
+    def __init__(
+        self,
+        sampler: Callable[[], GuardSnapshot] = take_snapshot,
+        interval_s: float = DEFAULT_INTERVAL_S,
+    ) -> None:
+        if interval_s <= 0:
+            raise ValueError(f"interval_s must be positive, got {interval_s}")
+        self._sampler = sampler
+        self._interval_s = interval_s
+        self._latest: GuardSnapshot | None = None
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self.sample_errors = 0
+        self.last_error: Exception | None = None
+
+    @property
+    def latest(self) -> GuardSnapshot:
+        snapshot = self._latest
+        if snapshot is None:
+            raise RuntimeError("SystemGuard has no snapshot yet; call start() or sample_now()")
+        return snapshot
+
+    @property
+    def is_running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    def sample_now(self) -> GuardSnapshot:
+        """Sample synchronously and publish; errors propagate to the caller."""
+        snapshot = self._sampler()
+        self._latest = snapshot
+        return snapshot
+
+    def start(self) -> None:
+        """Take one sample synchronously (so `latest` is valid) and start the thread."""
+        if self._thread is not None:
+            raise RuntimeError("SystemGuard already started")
+        self.sample_now()
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._run, name="acceptrate-guard", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        """Signal the thread and join it. Safe to call more than once."""
+        thread = self._thread
+        if thread is None:
+            return
+        self._stop.set()
+        thread.join()
+        self._thread = None
+
+    def _run(self) -> None:
+        while not self._stop.wait(self._interval_s):
+            try:
+                self.sample_now()
+            except Exception as exc:  # counted and surfaced, never swallowed
+                self.sample_errors += 1
+                self.last_error = exc
+
+    def __enter__(self) -> Self:
+        self.start()
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.stop()
