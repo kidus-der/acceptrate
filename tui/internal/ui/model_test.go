@@ -42,7 +42,7 @@ func TestViewShowsTitleStatusAndGaugesFromStats(t *testing.T) {
 	view := plainView(m)
 
 	for _, want := range []string{
-		"acceptrate chat — " + step.Stats.Model + " ← draft " + step.Stats.Draft,
+		"acceptrate chat — Llama-3.1-8B-Instruct-4bit ← draft Llama-3.2-1B-Instruct-4bit",
 		"draft window #6 · busy (another client)",
 		"acceptance", "throughput", "tok/s", "draft depth", "K = 4",
 		"windows 6",
