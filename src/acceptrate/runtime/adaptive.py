@@ -1,9 +1,12 @@
 """The scheduler: picks draft depth K for the next window, live.
 
-Layer 1 (model/speedup.best_k) turns an alpha and a cost ratio into K.
-Layer 2 (model/estimator) supplies alpha from recent windows. The cost
-ratio c is measured the same way: an EWMA of (draft_ms / K) / verify_ms per
-window, never assumed from parameter counts. K never drops below k_min, so
+Layer 1 (model/speedup.best_k_corrected) turns an alpha, a draft cost and
+the machine's verify-cost table v(K) into K. Layer 2 (model/estimator)
+supplies alpha from recent windows. The draft cost is measured the same
+way — an EWMA of (draft_ms / K) / verify_ms * v(K) per window, i.e. in
+plain-step units — never assumed from parameter counts. v(K) comes from the
+machine profile (docs/gates/P4.md: on a base M4 verification is only free
+up to K ~ 2). K never drops below k_min, so
 every window still yields an observation and the estimate cannot freeze.
 
 generate_adaptive mirrors runtime/speculative.py exactly except that K is
@@ -13,8 +16,8 @@ to it afterwards. Same cache discipline, same row contract.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from time import perf_counter
 from typing import Protocol
 
@@ -22,7 +25,7 @@ import numpy as np
 
 from acceptrate.backend.protocol import Backend
 from acceptrate.model.estimator import AcceptanceEstimator
-from acceptrate.model.speedup import best_k
+from acceptrate.model.speedup import M4_V_BY_K, best_k_corrected, v_at
 from acceptrate.runtime.engine import MS, GenerationContext, GenerationResult, GuardReader
 from acceptrate.trace.schema import WindowRow
 
@@ -33,8 +36,11 @@ class SchedulerConfig:
     k_max: int
     prior_alpha: float
     prior_c: float
+    """Draft cost per token relative to one plain decode step."""
     half_life_windows: float
     warmup_windows: int
+    v_by_k: Mapping[int, float] = field(default_factory=lambda: dict(M4_V_BY_K))
+    """Verify pass relative to a plain step, per K (docs/gates/P4.md); from the profile."""
 
     def __post_init__(self) -> None:
         if self.k_min < 1:
@@ -76,13 +82,14 @@ class AdaptiveScheduler:
         return self._c
 
     def next_k(self) -> int:
-        k = best_k(self._alpha.alpha, self._c, self.config.k_max)
+        k = best_k_corrected(self._alpha.alpha, self._c, self.config.v_by_k, self.config.k_max)
         return min(self.config.k_max, max(self.config.k_min, k))
 
     def observe(self, k_proposed: int, n_accepted: int, draft_ms: float, verify_ms: float) -> None:
         self._alpha = self._alpha.update(k_proposed, n_accepted)
         if k_proposed > 0 and verify_ms > 0.0:
-            measured = (draft_ms / k_proposed) / verify_ms
+            # (draft per token / verify pass) * (verify pass / plain step) = plain-step units
+            measured = (draft_ms / k_proposed) / verify_ms * v_at(self.config.v_by_k, k_proposed)
             self._c = self._c_decay * self._c + (1.0 - self._c_decay) * measured
         self.windows += 1
 
