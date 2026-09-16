@@ -7,6 +7,7 @@ and detokenised text, and keeps the rolling window /stats reads from.
 
 from __future__ import annotations
 
+import gc
 import threading
 
 import pytest
@@ -141,6 +142,7 @@ def test_a_second_generation_is_refused_while_one_is_running() -> None:
 
     backend.gate.set()
     worker.join(2.0)
+    assert not worker.is_alive()
     assert session.busy is False
     _drain(session.generate(MESSAGES, 10))  # the lock was released
 
@@ -152,6 +154,28 @@ def test_closing_an_unfinished_generation_releases_the_session() -> None:
     assert session.busy is True
 
     events.close()
+
+    assert session.busy is False
+
+
+def test_closing_a_never_started_generation_releases_the_session() -> None:
+    session = _session(k=0)
+    events = session.generate(MESSAGES, 10)
+    assert session.busy is True
+
+    events.close()  # an unstarted generator's finally never runs; release must not rely on it
+
+    assert session.busy is False
+    _drain(session.generate(MESSAGES, 5))
+
+
+def test_dropping_a_never_started_generation_releases_the_session() -> None:
+    session = _session(k=0)
+    events = session.generate(MESSAGES, 10)
+    assert session.busy is True
+
+    del events
+    gc.collect()
 
     assert session.busy is False
 
