@@ -12,8 +12,7 @@ build/
 htmlcov/
 
 # traces and models — data never goes in git except published samples
-traces/*.parquet
-traces/**/*.parquet
+traces/
 models/
 *.safetensors
 *.gguf
