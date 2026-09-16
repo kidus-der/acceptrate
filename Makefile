@@ -1,4 +1,4 @@
-.PHONY: test lint fmt smoke reproduce tokens tokens-check calibrate lossless sweep-one adaptive
+.PHONY: test lint fmt smoke reproduce tokens tokens-check calibrate lossless sweep-one adaptive tui tui-test chat-demo
 
 test:
 	uv run pytest -m "not model and not perf"
@@ -37,6 +37,15 @@ tokens-check:
 
 TRACES ?= traces/sweep
 FIGURES ?= docs/figures
+
+tui:  ## build the Go TUI binary into tui/bin
+	cd tui && go build -o bin/acceptrate-tui ./cmd/acceptrate-tui
+
+tui-test:
+	cd tui && go vet ./... && go test ./...
+
+chat-demo: tui  ## the TUI against its in-process mock, no model needed
+	tui/bin/acceptrate-tui --mock
 
 reproduce:  ## regenerate every published figure and table from raw traces
 	uv run acceptrate analysis p3-gate $(TRACES)
