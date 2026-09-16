@@ -55,6 +55,32 @@ class Event:
     """Set on the final event only: "stop" (EOS) or "length" (max_tokens)."""
 
 
+class _Generation:
+    """Iterator over a generation that releases the session on close() or GC.
+
+    An unstarted generator's finally never runs, so the release cannot live
+    only inside `_run`; this wrapper calls it explicitly on close() and via
+    weakref.finalize when the object is dropped. `release` is one-shot.
+    """
+
+    __slots__ = ("__weakref__", "_inner", "_release")
+
+    def __init__(self, inner: Iterator[Event], release: Callable[[], None]) -> None:
+        self._inner = inner
+        self._release = release
+        weakref.finalize(self, release)
+
+    def __iter__(self) -> Iterator[Event]:
+        return self
+
+    def __next__(self) -> Event:
+        return next(self._inner)
+
+    def close(self) -> None:
+        self._inner.close()
+        self._release()
+
+
 class _NullSnapshot:
     mem_pressure = 0
     page_ins = 0
@@ -129,11 +155,7 @@ class Session:
             self._running.release()
             raise
         release = self._release_once()
-        events = self._run(prompt, max_tokens, k, release)
-        # An unstarted generator's finally never runs on close() or GC, so the
-        # release is also attached to the generator's lifetime.
-        weakref.finalize(events, release)
-        return events
+        return _Generation(self._run(prompt, max_tokens, k, release), release)
 
     def _release_once(self) -> Callable[[], None]:
         """One-shot end-of-generation: safe from the generator's finally and from GC."""
