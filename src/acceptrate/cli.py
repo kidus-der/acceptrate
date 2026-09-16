@@ -538,16 +538,22 @@ def serve(
         str, typer.Option(help="Draft repo, or 'lookup', or 'none'.")
     ] = DEFAULT_PAIR.draft.repo,  # type: ignore[union-attr]
     k: Annotated[int, typer.Option(help="Fixed draft depth (0 = plain decoding).")] = 4,
+    adaptive: Annotated[bool, typer.Option("--adaptive", help="Re-pick K per window.")] = False,
+    k_max: Annotated[int, typer.Option(help="Adaptive ceiling.")] = 8,
     host: Annotated[str, typer.Option(help="Bind address (local only).")] = "127.0.0.1",
     port: Annotated[int, typer.Option(help="Port.")] = 8321,
 ) -> None:
     """OpenAI-compatible endpoint on localhost plus the live /stats feed the TUI consumes."""
     from acceptrate.backend.mlx_backend import MLXBackend
     from acceptrate.bench.guards import SystemGuard
+    from acceptrate.runtime.adaptive import AdaptiveScheduler, SchedulerConfig
     from acceptrate.serve.runner import run
     from acceptrate.serve.session import Session
 
-    use_draft = draft != "none" and k > 0
+    use_draft = draft != "none" and (k > 0 or adaptive)
+    sched_cfg = SchedulerConfig(
+        k_min=1, k_max=k_max, prior_alpha=0.6, prior_c=0.16, half_life_windows=4, warmup_windows=0
+    )
     pair = ModelPairConfig(
         target=DEFAULT_PAIR.target, draft=_draft_spec(draft) if use_draft else None
     )
@@ -559,13 +565,18 @@ def serve(
             target,
             draft_backend,
             target.tokenizer,
-            lambda: k if use_draft else 0,
+            lambda: max(k, 1) if use_draft else 0,
             model=pair.target.repo,
             draft_name=draft if use_draft else None,
             guard=lambda: guard.latest,
+            make_scheduler=(lambda: AdaptiveScheduler(sched_cfg))
+            if (adaptive and use_draft)
+            else None,
         )
+        mode = "adaptive" if adaptive and use_draft else f"K={k}"
         typer.echo(
-            f"serving {pair.target.repo} (draft={draft if use_draft else 'none'}, K={k}) on http://{host}:{port}"
+            f"serving {pair.target.repo} (draft={draft if use_draft else 'none'}, {mode}) "
+            f"on http://{host}:{port}"
         )
         run(session, host=host, port=port)
 
