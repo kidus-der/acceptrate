@@ -68,8 +68,10 @@ def test_schedule_interleaves_arms_and_rotates_which_goes_first() -> None:
     jobs = interleaved_schedule(arms, PROMPTS, reps=1, warmup=0)
 
     names = [j.arm.name for j in jobs]
-    assert all(a != b for a, b in pairwise(names))
-    assert names[0] != names[2]  # the leading arm alternates prompt to prompt
+    per_prompt = [names[i : i + 2] for i in range(0, len(names), 2)]
+    assert all(sorted(group) == ["base", "spec"] for group in per_prompt)  # never A,A,...,B,B
+    leaders = [group[0] for group in per_prompt]
+    assert all(a != b for a, b in pairwise(leaders))  # the leading arm alternates per prompt
 
 
 def test_schedule_puts_warmup_jobs_first_and_flags_them() -> None:
