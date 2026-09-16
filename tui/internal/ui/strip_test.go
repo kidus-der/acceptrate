@@ -66,7 +66,7 @@ func TestRenderStripKeepsTheLastWidthCells(t *testing.T) {
 
 	got := ansi.Strip(RenderStrip(Cells(windows), 4, st))
 
-	if got != "●●●○" {
+	if got != "◆●●○" {
 		t.Errorf("got %q, want the last 4 cells", got)
 	}
 	if w := ansi.StringWidth(got); w != 4 {
