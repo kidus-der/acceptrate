@@ -17,6 +17,18 @@ fmt:
 smoke:
 	uv run acceptrate bench --smoke
 
+calibrate:
+	uv run acceptrate verify calibrate
+
+lossless:
+	uv run acceptrate verify lossless --prompts 20 --k 4 --max-tokens 128
+
+sweep-one:  ## DRAFT=mlx-community/... make sweep-one
+	uv run acceptrate bench sweep --draft $(DRAFT) --ks 0-8 --prompts-per-tag 6 --max-tokens 200
+
+adaptive:
+	uv run acceptrate bench adaptive
+
 reproduce:
 	@echo "make reproduce is a P7 deliverable; nothing to regenerate yet" >&2
 	@exit 1
