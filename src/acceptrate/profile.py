@@ -40,6 +40,8 @@ class MachineProfile:
     baseline_tok_s: float
     c_by_k: dict[int, float]
     alpha_prior: float
+    v_by_k: dict[int, float]
+    """Verify pass over K+1 tokens relative to one plain decode step (docs/gates/P4.md)."""
 
 
 def default_profile_path() -> Path:
@@ -67,21 +69,28 @@ def measure_profile(
 ) -> MachineProfile:
     """Short plain and speculative runs: baseline tok/s, per-K cost ratio, per-token alpha."""
     ctx = GenerationContext("calibrate", "chat", "calibrate", 0)
-    baseline = [
-        _tok_s(generate_plain(target, p, max_tokens, eos, ctx, guard).rows) for p in prompts
-    ]
+    plain_runs = [generate_plain(target, p, max_tokens, eos, ctx, guard).rows for p in prompts]
+    baseline = [_tok_s(rows) for rows in plain_runs]
+    plain_steps = [r[_WINDOW_MS] for rows in plain_runs for r in rows]
+    plain_step = float(median(plain_steps)) if plain_steps else 0.0
     c_by_k: dict[int, float] = {}
+    v_by_k: dict[int, float] = {}
     accepted = examined = 0
     for k in ks:
         ratios: list[float] = []
+        verifies: list[float] = []
         for p in prompts:
             result = generate_speculative(target, draft, p, max_tokens, eos, ctx, guard, k)
             for r in result.rows:
                 if r[_VERIFY_MS] > 0:
                     ratios.append((r[_DRAFT_MS] / r[_K]) / r[_VERIFY_MS])
+                    verifies.append(r[_VERIFY_MS])
                 accepted += r[_N]
                 examined += r[_N] + 1 if r[_N] < r[_K] else r[_K]
         c_by_k[int(k)] = float(median(ratios)) if ratios else 0.0
+        v_by_k[int(k)] = (
+            float(median(verifies)) / plain_step if verifies and plain_step > 0 else 1.0
+        )
     return MachineProfile(
         chip=chip,
         mlx_version=mlx_version,
@@ -91,21 +100,31 @@ def measure_profile(
         baseline_tok_s=float(median(baseline)) if baseline else 0.0,
         c_by_k=c_by_k,
         alpha_prior=accepted / examined if examined else 0.0,
+        v_by_k=v_by_k,
     )
 
 
-def scheduler_priors(profile: MachineProfile, k: int) -> tuple[float, float]:
-    """(alpha_prior, c_prior): c at the requested K if profiled, else the median over K."""
-    c = profile.c_by_k.get(k)
-    if c is None:
-        c = float(median(profile.c_by_k.values())) if profile.c_by_k else 0.16
-    return profile.alpha_prior, c
+def scheduler_priors(profile: MachineProfile, k: int) -> tuple[float, float, dict[int, float]]:
+    """(alpha_prior, c_plain_prior, v_by_k).
+
+    c_plain is the draft cost per token in plain-step units, c(K) * v(K) — at
+    the requested K if profiled, else the mean over the profiled Ks.
+    """
+    if k in profile.c_by_k and k in profile.v_by_k:
+        c_plain = profile.c_by_k[k] * profile.v_by_k[k]
+    elif profile.c_by_k:
+        pairs = [(profile.c_by_k[j], profile.v_by_k.get(j, 1.0)) for j in profile.c_by_k]
+        c_plain = sum(c * v for c, v in pairs) / len(pairs)
+    else:
+        c_plain = 0.16
+    return profile.alpha_prior, c_plain, dict(profile.v_by_k)
 
 
 def save_profile(profile: MachineProfile, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     data = asdict(profile)
     data["c_by_k"] = {str(k): v for k, v in profile.c_by_k.items()}
+    data["v_by_k"] = {str(k): v for k, v in profile.v_by_k.items()}
     path.write_text(json.dumps(data, indent=2) + "\n")
 
 
@@ -115,4 +134,5 @@ def load_profile(path: Path) -> MachineProfile:
     if missing:
         raise ValueError(f"{path} is not a machine profile: missing {missing}")
     data["c_by_k"] = {int(k): float(v) for k, v in data["c_by_k"].items()}
+    data["v_by_k"] = {int(k): float(v) for k, v in data["v_by_k"].items()}
     return MachineProfile(**{k: data[k] for k in MachineProfile.__dataclass_fields__})

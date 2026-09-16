@@ -594,7 +594,7 @@ def calibrate(
     )  # fmt: skip
     path = out or default_profile_path()
     save_profile(profile, path)
-    cs = ", ".join(f"K{k}={c:.3f}" for k, c in profile.c_by_k.items())
+    cs = ", ".join(f"K{k}={c:.3f}/v{profile.v_by_k[k]:.2f}" for k, c in profile.c_by_k.items())
     typer.echo(
         f"baseline {profile.baseline_tok_s:.2f} tok/s  alpha prior {profile.alpha_prior:.2f}"
     )
@@ -622,14 +622,16 @@ def serve(
     from acceptrate.serve.session import Session
 
     use_draft = draft != "none" and (k > 0 or adaptive)
-    prior_alpha, prior_c = 0.6, 0.16
+    from acceptrate.model.speedup import M4_V_BY_K
+
+    prior_alpha, prior_c, v_by_k = 0.6, 0.16, dict(M4_V_BY_K)
     profile_path = default_profile_path()
     if profile_path.exists():
-        prior_alpha, prior_c = scheduler_priors(load_profile(profile_path), k=max(k, 1))
+        prior_alpha, prior_c, v_by_k = scheduler_priors(load_profile(profile_path), k=max(k, 1))
         typer.echo(f"priors from {profile_path}: alpha {prior_alpha:.2f}, c {prior_c:.3f}")
     sched_cfg = SchedulerConfig(
         k_min=1, k_max=k_max, prior_alpha=prior_alpha, prior_c=prior_c,
-        half_life_windows=4, warmup_windows=0,
+        half_life_windows=4, warmup_windows=0, v_by_k=v_by_k,
     )  # fmt: skip
     pair = ModelPairConfig(
         target=DEFAULT_PAIR.target, draft=_draft_spec(draft) if use_draft else None
