@@ -90,6 +90,25 @@ def bench(ctx: typer.Context, smoke: SmokeFlag = False) -> None:
     typer.echo("smoke: ok")
 
 
+LOOKUP_DRAFT = "lookup"
+"""Pass as --draft to use prompt-lookup drafting (no draft model, c ~ 0)."""
+
+
+def _draft_spec(draft: str):
+    from acceptrate.weights import cached_spec
+
+    return None if draft == LOOKUP_DRAFT else cached_spec(draft)
+
+
+def _load_draft(draft: str, target):
+    from acceptrate.backend.mlx_backend import MLXBackend
+    from acceptrate.runtime.lookup import LookupBackend
+
+    if draft == LOOKUP_DRAFT:
+        return LookupBackend(vocab_size=target.vocab_size)
+    return MLXBackend.load(draft)
+
+
 def _progress_line(done: int, total: int) -> None:
     sys.stdout.write(f"\r  generation {done}/{total}")
     sys.stdout.flush()
@@ -184,12 +203,11 @@ def bench_sweep(
     from acceptrate.runtime.speculative import generate_speculative
     from acceptrate.trace import TraceWriter, build_manifest
     from acceptrate.trace.schema import WORKLOAD_TAGS
-    from acceptrate.weights import cached_spec
 
     depths = parse_ks(ks)
     needs_draft = any(k > 0 for k in depths)
     pair = ModelPairConfig(
-        target=DEFAULT_PAIR.target, draft=cached_spec(draft) if needs_draft else None
+        target=DEFAULT_PAIR.target, draft=_draft_spec(draft) if needs_draft else None
     )
     _check_fit(pair)
     chosen = select_prompts(load_corpus(), n=prompts_per_tag * len(WORKLOAD_TAGS))
@@ -203,7 +221,7 @@ def bench_sweep(
         warmup,
     )
     target = MLXBackend.load(pair.target.repo)
-    draft_backend = MLXBackend.load(draft) if needs_draft else None
+    draft_backend = _load_draft(draft, target) if needs_draft else None
     tokenizer = target.tokenizer
     eos = tokenizer.eos_token_ids
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
@@ -275,17 +293,16 @@ def bench_adaptive(
     from acceptrate.runtime.engine import GenerationContext
     from acceptrate.runtime.speculative import generate_speculative
     from acceptrate.trace import TraceWriter, build_manifest
-    from acceptrate.weights import cached_spec
 
     fixed = tuple(k for k in parse_ks(ks) if k >= 1)
-    pair = ModelPairConfig(target=DEFAULT_PAIR.target, draft=cached_spec(draft))
+    pair = ModelPairConfig(target=DEFAULT_PAIR.target, draft=_draft_spec(draft))
     _check_fit(pair)
     chosen = mixed_workload(seed=seed, n=prompts, split="heldout")
     specs = p5_arms(
         fixed, pair.target.repo, draft, max_tokens, [p.id for p in chosen], reps, warmup
     )
     target = MLXBackend.load(pair.target.repo)
-    draft_backend = MLXBackend.load(draft)
+    draft_backend = _load_draft(draft, target)
     tokenizer = target.tokenizer
     eos = tokenizer.eos_token_ids
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
