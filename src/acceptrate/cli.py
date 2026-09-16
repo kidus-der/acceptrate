@@ -687,7 +687,7 @@ def chat(
 
 predictor_app = typer.Typer(no_args_is_help=True)
 app.add_typer(predictor_app, name="predictor", help="The cold-start alpha predictor (P6).")
-DEFAULT_PREDICTOR_PATH = Path("models/predictor.joblib")
+DEFAULT_PREDICTOR_PATH = Path("calibration/predictor.joblib")
 
 
 @predictor_app.command("train")
