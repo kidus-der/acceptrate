@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -79,7 +80,7 @@ def bench(ctx: typer.Context, smoke: SmokeFlag = False) -> None:
     if ctx.invoked_subcommand is not None:
         return
     if not smoke:
-        _fail("use --smoke, or a subcommand: compare")
+        _fail("use --smoke, or a subcommand: baseline, compare")
     _check_fit(DEFAULT_PAIR)
     _smoke_one("draft", DEFAULT_PAIR.draft.repo)  # type: ignore[union-attr]
     _smoke_one("target", DEFAULT_PAIR.target.repo)
@@ -91,6 +92,69 @@ def _progress_line(done: int, total: int) -> None:
     sys.stdout.flush()
     if done == total:
         sys.stdout.write("\n")
+
+
+@bench_app.command("baseline")
+def bench_baseline(
+    prompts: Annotated[int, typer.Option(help="Corpus prompts, round-robin over tags.")] = 12,
+    reps: Annotated[int, typer.Option(help="Repeats per prompt.")] = 1,
+    warmup: Annotated[int, typer.Option(help="Generations discarded before recording.")] = 2,
+    max_tokens: Annotated[int, typer.Option(help="Tokens per generation.")] = 128,
+    tag: Annotated[str | None, typer.Option(help="Restrict to one workload tag.")] = None,
+    out: Annotated[Path, typer.Option(help="Traces root directory.")] = DEFAULT_TRACES,
+) -> None:
+    """Plain K=0 decoding with the target model: the trustworthy baseline numbers."""
+    from acceptrate.backend.mlx_backend import MLXBackend
+    from acceptrate.bench.guards import SystemGuard
+    from acceptrate.bench.runner import Arm, GenerationOutcome, RunPlan, run_plan
+    from acceptrate.bench.selection import select_prompts
+    from acceptrate.bench.workloads import as_chat_messages, load_corpus
+    from acceptrate.runtime.engine import GenerationContext, generate_plain
+    from acceptrate.trace import TraceWriter, build_manifest, run_id_for
+
+    _check_fit(ModelPairConfig(target=DEFAULT_PAIR.target, draft=None))
+    chosen = select_prompts(load_corpus(), n=prompts, tag=tag)
+    config = {
+        "arm": "plain",
+        "k": 0,
+        "target": DEFAULT_PAIR.target.repo,
+        "max_tokens": max_tokens,
+        "prompts": [p.id for p in chosen],
+        "reps": reps,
+        "warmup": warmup,
+    }
+    run_id = run_id_for(config)
+    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    run_dir = out / f"{run_id}-{stamp}"
+    target = MLXBackend.load(DEFAULT_PAIR.target.repo)
+    tokenizer = target.tokenizer
+    eos = tokenizer.eos_token_ids
+
+    with SystemGuard() as guard, TraceWriter(run_dir, build_manifest(config)) as writer:
+
+        def generate(prompt, rep: int, rid: str) -> GenerationOutcome:
+            tokens = tokenizer.encode_chat(as_chat_messages(prompt))
+            ctx = GenerationContext(rid, prompt.tag, prompt.id, rep)
+            result = generate_plain(target, tokens, max_tokens, eos, ctx, lambda: guard.latest)
+            return GenerationOutcome(len(result.tokens), result.rows)
+
+        typer.echo(f"run {run_id} -> {run_dir}")
+        typer.echo(f"  {len(chosen)} prompts x {reps} reps, warmup {warmup}, {max_tokens} tokens")
+        summary = run_plan(
+            RunPlan(prompts=chosen, reps=reps, warmup=warmup),
+            (Arm("plain", run_id, generate),),
+            sink=lambda _rid, rows: writer.end_generation(rows),
+            on_progress=_progress_line,
+        )
+
+    arm = summary.arms["plain"]
+    stats = arm.tok_s
+    typer.echo(
+        f"plain: median {stats.median:.2f} tok/s  IQR [{stats.q1:.2f}, {stats.q3:.2f}]  n={stats.n}"
+    )
+    typer.echo(
+        f"  windows={arm.windows}  dirty={arm.dirty_windows}  guard_errors={guard.sample_errors}"
+    )
 
 
 @bench_app.command("compare")
