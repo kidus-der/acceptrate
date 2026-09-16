@@ -6,9 +6,13 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kidus-der/acceptrate/tui/internal/api"
 )
+
+// fast keeps heartbeats short so the limit=3 stream returns quickly.
+var fast = Options{Heartbeat: 10 * time.Millisecond}
 
 func postChat(t *testing.T, url string, body string) *http.Response {
 	t.Helper()
@@ -59,7 +63,7 @@ func TestDemoScenarioRampsAlphaAndStepsK(t *testing.T) {
 }
 
 func TestStatsStreamSendsStatsFirstThenHeartbeats(t *testing.T) {
-	srv := New(Demo(), 0)
+	srv := New(Demo(), fast)
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/stats/stream?limit=3")
@@ -92,7 +96,7 @@ func TestStatsStreamSendsStatsFirstThenHeartbeats(t *testing.T) {
 
 func TestChatStreamsScenarioTextThenDoneAndAdvancesStats(t *testing.T) {
 	sc := Demo()
-	srv := New(sc, 0)
+	srv := New(sc, fast)
 	defer srv.Close()
 
 	resp := postChat(t, srv.URL, `{"messages":[{"role":"user","content":"hi"}],"stream":true}`)
@@ -140,7 +144,7 @@ func TestChatStreamsScenarioTextThenDoneAndAdvancesStats(t *testing.T) {
 
 func TestNonStreamChatReturnsTheWholeText(t *testing.T) {
 	sc := Demo()
-	srv := New(sc, 0)
+	srv := New(sc, fast)
 	defer srv.Close()
 
 	resp := postChat(t, srv.URL, `{"messages":[{"role":"user","content":"hi"}]}`)
@@ -159,7 +163,7 @@ func TestNonStreamChatReturnsTheWholeText(t *testing.T) {
 }
 
 func TestMalformedChatBodyIs422(t *testing.T) {
-	srv := New(Demo(), 0)
+	srv := New(Demo(), fast)
 	defer srv.Close()
 
 	resp := postChat(t, srv.URL, `{"messages":[]}`)
@@ -171,7 +175,7 @@ func TestMalformedChatBodyIs422(t *testing.T) {
 }
 
 func TestModelsAndHealthz(t *testing.T) {
-	srv := New(Demo(), 0)
+	srv := New(Demo(), fast)
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/v1/models")
