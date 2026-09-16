@@ -6,6 +6,7 @@ speedup(alpha, K, c) = (1 - alpha^(K+1)) / ((1 - alpha) * (K*c + 1))
 from __future__ import annotations
 
 import math
+from itertools import pairwise
 
 import pytest
 from hypothesis import given
@@ -23,9 +24,12 @@ def test_k_zero_is_plain_decoding() -> None:
 
 
 def test_matches_the_briefs_worked_example() -> None:
-    # brief calculator default: alpha 0.70, c 0.16 -> best 1.71x at K = 4
-    assert speedup(0.70, 4, 0.16) == pytest.approx(1.71, abs=0.01)
-    assert best_k(0.70, 0.16) == 4
+    # brief calculator default: alpha 0.70, c 0.16. The caption says "1.71x at
+    # K = 4"; the equation gives 1.71x at K = 3 and 1.69x at K = 4. The
+    # equation wins: the value is right, the depth in the caption is not.
+    assert speedup(0.70, 3, 0.16) == pytest.approx(1.71, abs=0.01)
+    assert speedup(0.70, 4, 0.16) == pytest.approx(1.69, abs=0.01)
+    assert best_k(0.70, 0.16) == 3
 
 
 def test_alpha_zero_always_loses_for_any_positive_k() -> None:
@@ -50,7 +54,7 @@ def test_speedup_is_monotone_in_alpha(k: int, c: float) -> None:
 
     values = [speedup(a, k, c) for a in grid]
 
-    assert all(x <= y + 1e-12 for x, y in zip(values, values[1:], strict=False))
+    assert all(x <= y + 1e-12 for x, y in pairwise(values))
 
 
 @given(alpha=ALPHA, k=st.integers(min_value=1, max_value=K_MAX))
@@ -63,9 +67,7 @@ def test_best_k_is_the_argmax_over_the_grid(alpha: float, c: float) -> None:
     k = best_k(alpha, c)
 
     assert 0 <= k <= K_MAX
-    assert all(
-        speedup(alpha, k, c) >= speedup(j, c=c, alpha=alpha) - 1e-12 for j in range(K_MAX + 1)
-    )
+    assert all(speedup(alpha, k, c) >= speedup(alpha, j, c) - 1e-12 for j in range(K_MAX + 1))
 
 
 def test_best_k_is_zero_when_no_depth_wins() -> None:
