@@ -94,3 +94,35 @@ def test_alpha_outside_unit_interval_is_rejected(bad: float) -> None:
 def test_negative_cost_is_rejected() -> None:
     with pytest.raises(ValueError):
         speedup(0.5, 4, -0.1)
+
+
+def test_corrected_speedup_matches_naive_when_v_is_one() -> None:
+    from acceptrate.model.speedup import speedup_corrected
+
+    assert speedup_corrected(0.7, 4, 0.16, 1.0) == pytest.approx(speedup(0.7, 4, 0.16))
+
+
+def test_corrected_speedup_divides_the_harvest_by_the_measured_window_cost() -> None:
+    from acceptrate.model.speedup import expected_tokens, speedup_corrected
+
+    assert speedup_corrected(0.7, 4, 0.16, 1.57) == pytest.approx(
+        expected_tokens(0.7, 4) / (4 * 0.16 + 1.57)
+    )
+
+
+def test_best_k_corrected_with_the_m4_table_prefers_k2_where_naive_picks_higher() -> None:
+    from acceptrate.model.speedup import M4_V_BY_K, best_k_corrected
+
+    assert best_k(0.85, 0.16) >= 4  # the brief's form keeps drafting deeper
+    assert (
+        best_k_corrected(0.85, 0.16, M4_V_BY_K, 8) == 2
+    )  # the measured verify cost says stop at 2
+
+
+def test_best_k_corrected_extrapolates_v_beyond_the_table() -> None:
+    from acceptrate.model.speedup import best_k_corrected, v_at
+
+    table = {1: 1.0, 2: 1.05, 3: 1.3}
+    assert v_at(table, 2) == 1.05
+    assert v_at(table, 5) == pytest.approx(1.3 + 2 * 0.25)  # linear from the last two entries
+    assert 1 <= best_k_corrected(0.9, 0.05, table, 6) <= 6

@@ -38,7 +38,9 @@ def test_measure_profile_records_baseline_c_and_alpha_from_short_runs() -> None:
     assert isinstance(profile, MachineProfile)
     assert profile.baseline_tok_s > 0
     assert set(profile.c_by_k) == {2, 4}
+    assert set(profile.v_by_k) == {2, 4}
     assert all(c >= 0 for c in profile.c_by_k.values())
+    assert all(v > 0 for v in profile.v_by_k.values())
     assert profile.alpha_prior == pytest.approx(1.0)
     assert profile.chip == "fake" and profile.target == "t" and profile.draft == "d"
 
@@ -54,8 +56,9 @@ def test_alpha_prior_reflects_a_bad_draft() -> None:
 
 def test_roundtrip_through_json(tmp_path: Path) -> None:
     profile = MachineProfile(
-        "Apple M4", "0.32.2", "t", "d", "2026-09-16T00:00:00Z", 20.5, {1: 0.19, 4: 0.12}, 0.7
-    )
+        "Apple M4", "0.32.2", "t", "d", "2026-09-16T00:00:00Z", 20.5, {1: 0.19, 4: 0.12}, 0.7,
+        {1: 1.0, 4: 1.57},
+    )  # fmt: skip
     path = tmp_path / "profile.json"
 
     save_profile(profile, path)
@@ -65,13 +68,16 @@ def test_roundtrip_through_json(tmp_path: Path) -> None:
 
 
 def test_scheduler_priors_use_the_profile_c_at_the_requested_k_or_the_median() -> None:
-    profile = MachineProfile("c", "m", "t", "d", "now", 20.0, {1: 0.2, 4: 0.1}, 0.7)
+    profile = MachineProfile(
+        "c", "m", "t", "d", "now", 20.0, {1: 0.2, 4: 0.1}, 0.7, {1: 1.0, 4: 1.5}
+    )
 
-    alpha, c4 = scheduler_priors(profile, k=4)
-    alpha2, c_any = scheduler_priors(profile, k=8)
+    alpha, c4, v = scheduler_priors(profile, k=4)
+    alpha2, c_any, _ = scheduler_priors(profile, k=8)
 
-    assert (alpha, c4) == (0.7, 0.1)
-    assert (alpha2, c_any) == (0.7, pytest.approx(0.15))
+    assert (alpha, c4) == (0.7, pytest.approx(0.1 * 1.5))  # c in plain-step units
+    assert v == {1: 1.0, 4: 1.5}
+    assert (alpha2, c_any) == (0.7, pytest.approx((0.2 * 1.0 + 0.1 * 1.5) / 2))
 
 
 def test_default_path_is_under_the_home_dot_dir(monkeypatch, tmp_path: Path) -> None:

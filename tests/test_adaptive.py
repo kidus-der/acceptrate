@@ -39,10 +39,20 @@ def _cfg(**kw) -> SchedulerConfig:
     return SchedulerConfig(**base)
 
 
-def test_initial_k_comes_from_the_priors() -> None:
+def test_initial_k_comes_from_the_priors_through_the_corrected_model() -> None:
     sched = AdaptiveScheduler(_cfg(prior_alpha=0.7, prior_c=0.16))
 
-    assert sched.next_k() == 3  # brief's worked example: alpha 0.70, c 0.16 -> K = 3
+    # brief's form says K = 3 for alpha 0.70, c 0.16; with the measured M4 verify
+    # cost table (docs/gates/P4.md) the optimum is K = 2
+    assert sched.next_k() == 2
+
+
+def test_v_table_of_ones_reproduces_the_briefs_closed_form() -> None:
+    sched = AdaptiveScheduler(
+        _cfg(prior_alpha=0.7, prior_c=0.16, v_by_k={k: 1.0 for k in range(1, 9)})
+    )
+
+    assert sched.next_k() == 3
 
 
 def test_k_rises_with_high_acceptance_and_falls_with_low() -> None:
@@ -62,11 +72,12 @@ def test_measured_cost_ratio_feeds_the_decision() -> None:
     cheap = AdaptiveScheduler(_cfg(prior_alpha=0.6))
     dear = AdaptiveScheduler(_cfg(prior_alpha=0.6))
     for _ in range(10):
-        cheap.observe(4, 3, draft_ms=4 * 1.0, verify_ms=50.0)  # c = 0.02
+        cheap.observe(4, 3, draft_ms=4 * 1.0, verify_ms=50.0)  # c = 0.02 of the verify pass
         dear.observe(4, 3, draft_ms=4 * 25.0, verify_ms=50.0)  # c = 0.5
 
     assert cheap.next_k() > dear.next_k()
-    assert cheap.c == pytest.approx(0.02, abs=0.05)
+    # c is tracked in plain-step units: c_obs * v(K); at K=4 on the M4 table v = 1.57
+    assert cheap.c == pytest.approx(0.02 * 1.57, abs=0.05)
 
 
 def test_k_is_clipped_to_the_configured_range() -> None:
