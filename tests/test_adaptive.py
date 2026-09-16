@@ -103,9 +103,8 @@ def test_constant_policy_reproduces_fixed_k_speculative_exactly() -> None:
     assert adaptive.tokens == fixed.tokens
     assert len(adaptive.rows) == len(fixed.rows)
     for a, f in zip(adaptive.rows, fixed.rows, strict=True):
-        assert (
-            a[:5] == f[:5] and a[7:] == f[7:] or a[:5] == f[:5]
-        )  # timings differ; structure equal
+        assert a[:5] == f[:5]  # run_id, window_idx, token_pos, k_proposed, n_accepted
+        assert a[7:13] == f[7:13]  # tag, guard fields, prompt_id, rep (timings differ)
 
 
 def test_adaptive_varies_k_and_records_it_per_window() -> None:
