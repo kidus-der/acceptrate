@@ -62,10 +62,18 @@ class Backend(Protocol):
         ...
 
 
+ChatMessage = dict[str, str]
+"""{"role": "user" | "assistant" | "system", "content": str}."""
+
+
 @runtime_checkable
 class Tokenizer(Protocol):
     eos_token_ids: frozenset[int]
 
     def encode(self, text: str) -> list[int]: ...
+
+    def encode_chat(self, messages: Sequence[ChatMessage]) -> list[int]:
+        """Apply the model's chat template and return prompt token ids, ready for prefill."""
+        ...
 
     def decode(self, tokens: Sequence[int]) -> str: ...

@@ -56,5 +56,8 @@ class FakeTokenizer:
     def encode(self, text: str) -> list[int]:
         return [ord(c) % 32 or 1 for c in text]
 
+    def encode_chat(self, messages: Sequence[dict[str, str]]) -> list[int]:
+        return [2, *self.encode(" ".join(m["content"] for m in messages)), 3]
+
     def decode(self, tokens: Sequence[int]) -> str:
         return "".join(chr(97 + (t % 26)) for t in tokens)

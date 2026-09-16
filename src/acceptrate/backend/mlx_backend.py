@@ -18,7 +18,7 @@ import mlx_lm
 import numpy as np
 from mlx_lm.models.cache import make_prompt_cache, trim_prompt_cache
 
-from acceptrate.backend.protocol import LogitRows, Logits
+from acceptrate.backend.protocol import ChatMessage, LogitRows, Logits
 
 
 @dataclass(frozen=True)
@@ -27,13 +27,25 @@ class MLXTokenizer:
 
     _wrapped: Any
     eos_token_ids: frozenset[int]
+    bos_token_ids: frozenset[int]
 
     @classmethod
     def from_wrapper(cls, wrapper: Any) -> MLXTokenizer:
-        return cls(_wrapped=wrapper, eos_token_ids=frozenset(int(t) for t in wrapper.eos_token_ids))
+        bos = wrapper.bos_token_id
+        return cls(
+            _wrapped=wrapper,
+            eos_token_ids=frozenset(int(t) for t in wrapper.eos_token_ids),
+            bos_token_ids=frozenset() if bos is None else frozenset({int(bos)}),
+        )
 
     def encode(self, text: str) -> list[int]:
         return [int(t) for t in self._wrapped.encode(text, add_special_tokens=False)]
+
+    def encode_chat(self, messages: Sequence[ChatMessage]) -> list[int]:
+        tokens = self._wrapped.apply_chat_template(
+            list(messages), add_generation_prompt=True, tokenize=True
+        )
+        return [int(t) for t in tokens]
 
     def decode(self, tokens: Sequence[int]) -> str:
         return str(self._wrapped.decode(list(tokens)))
