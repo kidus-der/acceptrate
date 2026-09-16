@@ -23,6 +23,8 @@ models_app = typer.Typer(no_args_is_help=True)
 bench_app = typer.Typer(invoke_without_command=True)
 app.add_typer(models_app, name="models", help="Pull and inspect model weights.")
 app.add_typer(bench_app, name="bench", help="The research harness. One progress line, no live view")
+verify_app = typer.Typer(no_args_is_help=True)
+app.add_typer(verify_app, name="verify", help="Losslessness gates.")
 
 SMOKE_PROMPT = "Write a short Python function that reverses a string, then explain it."
 SMOKE_TOKENS = 128
@@ -173,6 +175,56 @@ def bench_compare(run_a: Path, run_b: Path) -> None:
     if not result.passed:
         _fail("P1 gate: FAIL")
     typer.echo("P1 gate: PASS")
+
+
+@verify_app.command("lossless")
+def verify_lossless(
+    prompts: Annotated[int, typer.Option(help="Corpus prompts, round-robin over tags.")] = 20,
+    k: Annotated[int, typer.Option(help="Draft depth.")] = 4,
+    max_tokens: Annotated[int, typer.Option(help="Tokens per generation.")] = 128,
+) -> None:
+    """P2 gate: at temperature 0, speculative output must be token-identical to plain decoding."""
+    from acceptrate.backend.mlx_backend import MLXBackend
+    from acceptrate.bench.selection import select_prompts
+    from acceptrate.bench.workloads import as_chat_messages, load_corpus
+    from acceptrate.runtime.engine import GenerationContext, generate_plain
+    from acceptrate.runtime.speculative import generate_speculative
+    from acceptrate.verify.lossless import compare_generation, summarize
+
+    _check_fit(DEFAULT_PAIR)
+    chosen = select_prompts(load_corpus(), n=prompts)
+    target = MLXBackend.load(DEFAULT_PAIR.target.repo)
+    draft = MLXBackend.load(DEFAULT_PAIR.draft.repo)  # type: ignore[union-attr]
+    eos = target.tokenizer.eos_token_ids
+    reports = []
+    for prompt in chosen:
+        tokens = target.tokenizer.encode_chat(as_chat_messages(prompt))
+        ctx = GenerationContext("verify", prompt.tag, prompt.id, 0)
+        plain = generate_plain(target, tokens, max_tokens, eos, ctx, _NULL_GUARD)
+        spec = generate_speculative(target, draft, tokens, max_tokens, eos, ctx, _NULL_GUARD, k)
+        report = compare_generation(prompt.id, k, plain.tokens, spec.tokens, spec.rows)
+        reports.append(report)
+        verdict = "ok  " if report.matched else "DIFF"
+        detail = "" if report.matched else f"  at {report.first_divergence}"
+        typer.echo(
+            f"{verdict} {prompt.id:14s} tokens={report.n_tokens:3d} windows={report.windows:3d} "
+            f"alpha={report.alpha:.2f}{detail}"
+        )
+    matched, total = summarize(reports)
+    typer.echo(f"greedy equivalence K={k}: {matched}/{total} token-identical")
+    if matched != total:
+        _fail("P2 gate: FAIL")
+    typer.echo("P2 gate: PASS")
+
+
+class _NullSnapshot:
+    mem_pressure = 0
+    page_ins = 0
+    thermal_level = 0
+
+
+def _NULL_GUARD() -> _NullSnapshot:  # noqa: N802 — a guard reader, used like a constant
+    return _NullSnapshot()
 
 
 def main() -> None:
