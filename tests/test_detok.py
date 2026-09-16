@@ -48,7 +48,7 @@ def test_holds_back_a_partial_multibyte_character_until_it_completes() -> None:
 
     _, deltas = _drive(ByteTokenizer(), [[ord("a"), euro[0]], [euro[1]], [euro[2], ord("b")]])
 
-    assert deltas == ["a", "", "€b"]
+    assert deltas == ["", "", "a€b"]  # the whole chunk is held: text cannot map back to tokens
     assert REPLACEMENT not in "".join(deltas)
 
 
@@ -69,7 +69,8 @@ def test_flush_releases_held_bytes_even_if_they_never_completed() -> None:
     euro = "€".encode()
     state, _ = step(Detok(), (ord("x"), euro[0]), ByteTokenizer().decode)
 
-    assert flush(state, ByteTokenizer().decode) == REPLACEMENT
+    assert flush(state, ByteTokenizer().decode) == "x" + REPLACEMENT
+    assert flush(Detok(), ByteTokenizer().decode) == ""
 
 
 def test_step_with_no_tokens_emits_nothing() -> None:
