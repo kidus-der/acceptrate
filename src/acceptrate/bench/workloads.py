@@ -120,18 +120,25 @@ def load_corpus(read_tag: ReadTag = _read_packaged) -> tuple[Prompt, ...]:
     return prompts
 
 
+def _resolve(corpus: Sequence[Prompt] | None) -> Sequence[Prompt]:
+    """Callers may pass an already-loaded corpus to avoid re-reading package data."""
+    return load_corpus() if corpus is None else corpus
+
+
+def _check_split(name: str) -> None:
+    if name not in SPLITS:
+        raise ValueError(f"unknown split {name!r}; expected one of {SPLITS}")
+
+
 def by_tag(tag: str, corpus: Sequence[Prompt] | None = None) -> tuple[Prompt, ...]:
     if tag not in WORKLOAD_TAGS:
         raise ValueError(f"unknown tag {tag!r}; expected one of {WORKLOAD_TAGS}")
-    prompts = load_corpus() if corpus is None else corpus
-    return tuple(p for p in prompts if p.tag == tag)
+    return tuple(p for p in _resolve(corpus) if p.tag == tag)
 
 
 def split(name: Split, corpus: Sequence[Prompt] | None = None) -> tuple[Prompt, ...]:
-    if name not in SPLITS:
-        raise ValueError(f"unknown split {name!r}; expected one of {SPLITS}")
-    prompts = load_corpus() if corpus is None else corpus
-    return tuple(p for p in prompts if p.split == name)
+    _check_split(name)
+    return tuple(p for p in _resolve(corpus) if p.split == name)
 
 
 def _shuffled_pool(prompts: Sequence[Prompt], rng: random.Random) -> list[Prompt]:
@@ -151,9 +158,8 @@ def mixed_workload(
     """
     if n < 0:
         raise ValueError(f"n must be >= 0, got {n}")
-    if split not in SPLITS:
-        raise ValueError(f"unknown split {split!r}; expected one of {SPLITS}")
-    prompts = load_corpus() if corpus is None else corpus
+    _check_split(split)
+    prompts = _resolve(corpus)
     rng = random.Random(seed)
     pools = {
         tag: _shuffled_pool([p for p in prompts if p.tag == tag and p.split == split], rng)
