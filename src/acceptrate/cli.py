@@ -493,6 +493,63 @@ def _NULL_GUARD() -> _NullSnapshot:  # noqa: N802 — a guard reader, used like 
     return _NullSnapshot()
 
 
+predictor_app = typer.Typer(no_args_is_help=True)
+app.add_typer(predictor_app, name="predictor", help="The cold-start alpha predictor (P6).")
+DEFAULT_PREDICTOR_PATH = Path("models/predictor.joblib")
+
+
+@predictor_app.command("train")
+def predictor_train(
+    traces: Annotated[Path, typer.Option(help="Traces root with train-split cells.")] = Path(
+        "traces/sweep"
+    ),
+    out: Annotated[Path, typer.Option(help="Where to save the model.")] = DEFAULT_PREDICTOR_PATH,
+) -> None:
+    """Train the cold-start predictor on per-prompt alpha from train-split traces."""
+    from acceptrate.bench.workloads import load_corpus
+    from acceptrate.model.predictor import train_predictor
+    from acceptrate.model.predictor_data import build_dataset
+    from acceptrate.trace import read_runs
+
+    ds = build_dataset(read_runs(traces), load_corpus(), split="train")
+    if not ds.prompt_ids:
+        _fail(f"no train-split prompts with windows under {traces}")
+    predictor = train_predictor(ds.features, ds.alphas)
+    predictor.save(out)
+    typer.echo(
+        f"trained on {len(ds.prompt_ids)} prompts (alpha mean {ds.alphas.mean():.3f}) -> {out}"
+    )
+
+
+@predictor_app.command("eval")
+def predictor_eval(
+    train_traces: Annotated[Path, typer.Option(help="Train-split cells.")] = Path("traces/sweep"),
+    heldout_traces: Annotated[Path, typer.Option(help="Held-out cells.")] = Path("traces/p5"),
+    model: Annotated[Path, typer.Option(help="Saved predictor.")] = DEFAULT_PREDICTOR_PATH,
+) -> None:
+    """P6 gate: the predictor must beat a constant prior (train mean) on held-out prompts."""
+    from acceptrate.bench.workloads import load_corpus
+    from acceptrate.model.predictor import Predictor, constant_prior_mae, evaluate_mae
+    from acceptrate.model.predictor_data import build_dataset
+    from acceptrate.trace import read_runs
+
+    corpus = load_corpus()
+    train = build_dataset(read_runs(train_traces), corpus, split="train")
+    held = build_dataset(read_runs(heldout_traces), corpus, split="heldout")
+    if not held.prompt_ids:
+        _fail(f"no held-out prompts with windows under {heldout_traces}")
+    predictor = Predictor.load(model)
+    mae = evaluate_mae(predictor, held.features, held.alphas)
+    prior = constant_prior_mae(train.alphas, held.alphas)
+    typer.echo(
+        f"held-out prompts={len(held.prompt_ids)}  predictor MAE {mae:.4f}  "
+        f"constant-prior MAE {prior:.4f}  improvement {(1 - mae / prior) * 100:+.1f}%"
+    )
+    if mae >= prior:
+        _fail("P6 predictor gate: FAIL")
+    typer.echo("P6 predictor gate: PASS")
+
+
 def main() -> None:
     try:
         app()
