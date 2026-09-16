@@ -565,6 +565,43 @@ def verify_distributional(
 
 
 @app.command()
+def calibrate(
+    draft: Annotated[str, typer.Option(help="Draft model repo.")] = DEFAULT_PAIR.draft.repo,  # type: ignore[union-attr]
+    prompts: Annotated[int, typer.Option(help="Corpus prompts to profile on.")] = 6,
+    max_tokens: Annotated[int, typer.Option(help="Tokens per generation.")] = 96,
+    out: Annotated[
+        Path | None, typer.Option(help="Profile path (default ~/.acceptrate/profile.json).")
+    ] = None,
+) -> None:
+    """Profile this machine (~2 min): baseline tok/s, measured draft cost per K, opening alpha."""
+    from acceptrate.backend.mlx_backend import MLXBackend
+    from acceptrate.bench.selection import select_prompts
+    from acceptrate.bench.workloads import as_chat_messages, load_corpus
+    from acceptrate.profile import DEFAULT_KS, default_profile_path, measure_profile, save_profile
+    from acceptrate.trace.manifest import chip_name, package_version
+
+    pair = ModelPairConfig(target=DEFAULT_PAIR.target, draft=_draft_spec(draft))
+    _check_fit(pair)
+    target = MLXBackend.load(pair.target.repo)
+    draft_backend = _load_draft(draft, target)
+    chosen = select_prompts(load_corpus(), n=prompts)
+    token_lists = [target.tokenizer.encode_chat(as_chat_messages(p)) for p in chosen]
+    profile = measure_profile(
+        target, draft_backend, token_lists, DEFAULT_KS, max_tokens, _NULL_GUARD,
+        chip=chip_name(), mlx_version=package_version("mlx"),
+        target_repo=pair.target.repo, draft_repo=draft, eos=target.tokenizer.eos_token_ids,
+    )  # fmt: skip
+    path = out or default_profile_path()
+    save_profile(profile, path)
+    cs = ", ".join(f"K{k}={c:.3f}" for k, c in profile.c_by_k.items())
+    typer.echo(
+        f"baseline {profile.baseline_tok_s:.2f} tok/s  alpha prior {profile.alpha_prior:.2f}"
+    )
+    typer.echo(f"c by K: {cs}")
+    typer.echo(f"-> {path}")
+
+
+@app.command()
 def serve(
     draft: Annotated[
         str, typer.Option(help="Draft repo, or 'lookup', or 'none'.")
@@ -578,14 +615,21 @@ def serve(
     """OpenAI-compatible endpoint on localhost plus the live /stats feed the TUI consumes."""
     from acceptrate.backend.mlx_backend import MLXBackend
     from acceptrate.bench.guards import SystemGuard
+    from acceptrate.profile import default_profile_path, load_profile, scheduler_priors
     from acceptrate.runtime.adaptive import AdaptiveScheduler, SchedulerConfig
     from acceptrate.serve.runner import run
     from acceptrate.serve.session import Session
 
     use_draft = draft != "none" and (k > 0 or adaptive)
+    prior_alpha, prior_c = 0.6, 0.16
+    profile_path = default_profile_path()
+    if profile_path.exists():
+        prior_alpha, prior_c = scheduler_priors(load_profile(profile_path), k=max(k, 1))
+        typer.echo(f"priors from {profile_path}: alpha {prior_alpha:.2f}, c {prior_c:.3f}")
     sched_cfg = SchedulerConfig(
-        k_min=1, k_max=k_max, prior_alpha=0.6, prior_c=0.16, half_life_windows=4, warmup_windows=0
-    )
+        k_min=1, k_max=k_max, prior_alpha=prior_alpha, prior_c=prior_c,
+        half_life_windows=4, warmup_windows=0,
+    )  # fmt: skip
     pair = ModelPairConfig(
         target=DEFAULT_PAIR.target, draft=_draft_spec(draft) if use_draft else None
     )
