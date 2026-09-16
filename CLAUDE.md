@@ -106,6 +106,14 @@ be recovered later. Fields (brief tab 4):
 Rows are tuples in `trace/schema.py` `FIELD_NAMES` order. The definitive
 schema is `acceptrate.trace.schema.SCHEMA`.
 
+## The verify pass is not free here (P4 finding)
+
+On the M4, one verify pass over K+1 tokens costs v(K) plain decode steps:
+1.00, 1.05, 1.30, 1.57, 1.98, 2.43, 2.48, 2.96 for K = 1…8
+(`model/speedup.M4_V_BY_K`, docs/gates/P4.md). Anything that reasons about K
+— the scheduler, the calculator, the report — must use the corrected form.
+`acceptrate calibrate` measures v(K) per machine into the profile.
+
 ## Why the engine owns the loop
 
 mlx-lm's built-in `draft_model=` path yields tokens with a `from_draft` flag but
@@ -137,7 +145,7 @@ runtime.
 | P1 measurement rig | same config, two invocations: median tok/s within 2% |
 | P2 losslessness | 20 prompts at T=0: token-identical to baseline, where a divergence counts only as a near-tie if its sequential top-2 margin is within the calibrated noise floor (`calibration/noise_floor.json`); every near-tie printed; 0 divergent |
 | P3 the sweep | ≥ 50 000 clean draft windows in parquet, 0 rows with page_ins > 0 |
-| P4 analytical fit | predicted vs measured speedup R² > 0.85, residuals vs mem_pressure plotted |
+| P4 analytical fit | predicted vs measured speedup R² > 0.85 with the cost-corrected form E[tokens]/(v(K)·(Kc+1)); the brief's form (v=1) is reported alongside, never hidden |
 | P5 adaptive runtime | adaptive K beats best fixed K by ≥ 5% on held-out mixed workload |
 | P6 predictor + TUI | predictor beats constant prior; TUI ≥ 30 fps while generating |
 | P7 report | `make reproduce` regenerates every figure from raw traces on clean checkout |
