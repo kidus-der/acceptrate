@@ -6,7 +6,10 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = "MIT"
 authors = [{ name = "kidus", email = "kidusdereje41@gmail.com" }]
-dependencies = []
+dependencies = [
+    "mlx==0.32.2",
+    "mlx-lm==0.31.3",
+]
 
 [project.scripts]
 acceptrate = "acceptrate.cli:app"
