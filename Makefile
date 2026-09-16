@@ -35,6 +35,10 @@ tokens:
 tokens-check:
 	uv run python -m acceptrate.design --check
 
-reproduce:
-	@echo "make reproduce is a P7 deliverable; nothing to regenerate yet" >&2
-	@exit 1
+TRACES ?= traces/sweep
+FIGURES ?= docs/figures
+
+reproduce:  ## regenerate every published figure and table from raw traces
+	uv run acceptrate analysis p3-gate $(TRACES)
+	uv run acceptrate analysis fit $(TRACES) --out $(FIGURES)
+	uv run acceptrate analysis figures $(TRACES) --out $(FIGURES)
