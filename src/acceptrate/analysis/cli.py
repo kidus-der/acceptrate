@@ -78,7 +78,10 @@ def fit_command(traces_root: TracesRoot, out: OutDir = DEFAULT_FIGURES_DIR) -> N
     cells = cell_metrics(clean(_load(traces_root)))
     fit = fit_report(cells)
     written = write_tables(cells, fit, out)
-    typer.echo(f"R² = {fit.r2:.4f} over {fit.n_cells} speculative cells (gate > {fit.threshold})")
+    typer.echo(
+        f"R² = {fit.r2:.4f} over {fit.n_cells} speculative cells (gate > {fit.threshold}); "
+        f"closed form as written (v = 1): R² = {fit.r2_naive:.4f}"
+    )
     for path in written:
         typer.echo(f"  -> {path}")
     if not fit.passed:
@@ -92,8 +95,19 @@ def figures_command(traces_root: TracesRoot, out: OutDir = DEFAULT_FIGURES_DIR) 
     rows = _load(traces_root)
     cleaned = clean(rows)
     cells = cell_metrics(cleaned)
-    written = (
-        *heatmap_speedup(cells, out / FIGURE_STEMS["heatmap"]),
+    written: tuple[Path, ...] = ()
+    drafts = sorted(d for d in cells["draft"].unique().to_list() if d is not None)
+    for draft in drafts:
+        # one grid per draft, from its most recent session (a draft may have been swept twice)
+        session = cells.filter(pl.col("draft") == draft)["session"].max()
+        subset = cells.filter(
+            (pl.col("session") == session)
+            & (pl.col("draft").is_null() | (pl.col("draft") == draft))
+        )
+        slug = draft.rsplit("/", 1)[-1].replace(".", "_")
+        stem = f"{FIGURE_STEMS['heatmap']}_{slug}"
+        written += heatmap_speedup(subset, out / stem)
+    written += (
         *scatter_predicted_vs_measured(cells, out / FIGURE_STEMS["scatter"]),
         *residuals_vs_pressure(rows, cells, out / FIGURE_STEMS["pressure"]),
         *alpha_by_position(cleaned, out / FIGURE_STEMS["alpha"]),
