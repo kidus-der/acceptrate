@@ -21,9 +21,11 @@ from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 
 from acceptrate.backend.protocol import Backend, ChatMessage, Tokenizer
+from acceptrate.runtime.adaptive import Scheduler
 from acceptrate.runtime.engine import GenerationContext, GuardReader
 from acceptrate.runtime.streaming import (
     StreamEvent,
+    generate_adaptive_streaming,
     generate_plain_streaming,
     generate_speculative_streaming,
 )
@@ -107,11 +109,13 @@ class Session:
         draft_name: str | None = None,
         guard: GuardReader = null_guard,
         window_size: int = ROLLING_WINDOW,
+        make_scheduler: Callable[[], Scheduler] | None = None,
     ) -> None:
         self._target = target
         self._draft = draft
         self._tokenizer = tokenizer
         self._choose_k = choose_k
+        self._make_scheduler = make_scheduler
         self._guard = guard
         self.model = model
         self.draft_name = draft_name
@@ -194,6 +198,11 @@ class Session:
         ctx = GenerationContext(RUN_ID, WORKLOAD_TAG, str(self._requests), 0)
         if k <= 0 or self._draft is None:
             return generate_plain_streaming(self._target, prompt, max_tokens, eos, ctx, self._guard)
+        if self._make_scheduler is not None:
+            return generate_adaptive_streaming(
+                self._target, self._draft, prompt, max_tokens, eos, ctx, self._guard,
+                self._make_scheduler(),
+            )  # fmt: skip
         return generate_speculative_streaming(
             self._target, self._draft, prompt, max_tokens, eos, ctx, self._guard, k
         )
@@ -230,6 +239,7 @@ class Session:
     def _record(self, row: WindowRow, n_committed: int) -> None:
         stat = window_stat_from_row(row, n_committed)
         with self._state:
+            self._k_current = stat.k_proposed
             self._window.append(stat)
             self._totals = Totals(
                 self._totals.windows + 1,
