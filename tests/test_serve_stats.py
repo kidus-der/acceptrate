@@ -104,3 +104,8 @@ def test_compute_stats_on_an_empty_window_is_all_nulls_and_zeros() -> None:
     assert stats.tok_s_recent is None
     assert stats.last_windows == []
     assert stats.draft is None
+
+
+def test_ewma_alpha_is_per_token_so_a_rejection_counts_as_one_examined() -> None:
+    # 2 accepted of 4 proposed: the third was examined and rejected, the fourth never examined
+    assert ewma_alpha((_ws(4, 2),)) == pytest.approx(2 / 3)
