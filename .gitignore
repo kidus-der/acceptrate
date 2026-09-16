@@ -1,0 +1,33 @@
+# python / uv
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.hypothesis/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# traces and models — data never goes in git except published samples
+traces/*.parquet
+traces/**/*.parquet
+models/
+*.safetensors
+*.gguf
+
+# go
+tui/bin/
+tui/acceptrate-tui
+
+# node
+dashboard/node_modules/
+dashboard/dist/
+
+# os / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
