@@ -181,9 +181,10 @@ GOOD_TEXT = "x" * MIN_TEXT_CHARS
 
 
 def _reader_for(tmp_path: Path, lines: list[str], tag: str = "chat"):
+    """Serve `lines` as `tag`'s file and an empty file for every other tag."""
     path = tmp_path / f"{tag}.jsonl"
     path.write_text("\n".join(lines) + "\n")
-    return lambda _tag: path.read_text()
+    return lambda requested: path.read_text() if requested == tag else ""
 
 
 @pytest.mark.parametrize(
