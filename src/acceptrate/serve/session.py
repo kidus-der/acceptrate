@@ -157,6 +157,10 @@ class Session:
             self._target, self._draft, prompt, max_tokens, eos, ctx, self._guard, k
         )
 
+    def prompt_tokens(self, messages: Sequence[ChatMessage]) -> int:
+        """Prompt length after the chat template, for the OpenAI `usage` block."""
+        return len(self._tokenizer.encode_chat(messages))
+
     def stats(self) -> Stats:
         with self._state:
             window = tuple(self._window)
