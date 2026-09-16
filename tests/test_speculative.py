@@ -7,6 +7,7 @@ output must equal plain greedy output for every draft, good or bad.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import pairwise
 
 import pytest
 from hypothesis import given, settings
@@ -47,7 +48,7 @@ def _spec(draft, prompt, max_tokens, k, eos=frozenset()):
 
 
 def test_perfect_draft_accepts_every_token_and_matches_plain() -> None:
-    target, draft, result = _spec(FakeBackend(V, step=7), [3], max_tokens=20, k=4)
+    _, _, result = _spec(FakeBackend(V, step=7), [3], max_tokens=20, k=4)
 
     assert list(result.tokens) == _plain([3], 20)
     df = frame_from_rows(result.rows)
@@ -56,7 +57,7 @@ def test_perfect_draft_accepts_every_token_and_matches_plain() -> None:
 
 
 def test_always_wrong_draft_accepts_nothing_and_still_matches_plain() -> None:
-    target, draft, result = _spec(FakeBackend(V, step=3), [3], max_tokens=20, k=4)
+    _, _, result = _spec(FakeBackend(V, step=3), [3], max_tokens=20, k=4)
 
     assert list(result.tokens) == _plain([3], 20)
     df = frame_from_rows(result.rows)
@@ -65,7 +66,7 @@ def test_always_wrong_draft_accepts_nothing_and_still_matches_plain() -> None:
 
 
 def test_partial_draft_mixes_accept_counts_and_matches_plain() -> None:
-    target, draft, result = _spec(PartialFake(V), [3], max_tokens=40, k=4)
+    _, _, result = _spec(PartialFake(V), [3], max_tokens=40, k=4)
 
     assert list(result.tokens) == _plain([3], 40)
     counts = set(frame_from_rows(result.rows)["n_accepted"])
@@ -80,7 +81,7 @@ def test_rows_carry_positions_timings_and_context() -> None:
     assert list(df["window_idx"]) == list(range(len(result.rows)))
     positions = list(df["token_pos"])
     assert positions[0] == 1
-    assert all(b > a for a, b in zip(positions, positions[1:], strict=False))
+    assert all(b > a for a, b in pairwise(positions))
     assert (df["draft_ms"] >= 0).all()
     assert (df["verify_ms"] >= 0).all()
     assert (df["window_ms"] >= df["draft_ms"] + df["verify_ms"]).all()
@@ -97,11 +98,14 @@ def test_stops_at_max_tokens_exactly_even_mid_window() -> None:
 
 def test_stops_at_eos_and_keeps_the_eos_token() -> None:
     plain = _plain([3], 30)
-    eos = frozenset({plain[6]})
+    eos_token = plain[6]
+    first_hit = plain.index(eos_token)  # the fake's rule cycles, so it may appear earlier
+
+    eos = frozenset({eos_token})
 
     _, _, result = _spec(FakeBackend(V, step=7), [3], max_tokens=30, k=4, eos=eos)
 
-    assert list(result.tokens) == plain[:7]
+    assert list(result.tokens) == plain[: first_hit + 1]
     assert result.stopped_on_eos
 
 
