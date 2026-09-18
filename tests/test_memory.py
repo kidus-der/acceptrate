@@ -64,5 +64,5 @@ def test_allows_a_32b_pair_on_64gb() -> None:
 def test_live_probes_return_sane_values() -> None:
     from acceptrate.memory import current_pressure_level, total_bytes
 
-    assert total_bytes() > 8 * GB
+    assert total_bytes() > 1 * GB  # any machine that can run the suite; CI runners have 7 GB
     assert current_pressure_level() in (0, 1, 2)
