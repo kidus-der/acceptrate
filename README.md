@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./assets/hero-dark.svg?v=1">
-  <img alt="acceptrate — adaptive speculative decoding for Apple Silicon, measured honestly" src="./assets/hero-light.svg?v=1" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/hero-dark.svg?v=2">
+  <img alt="acceptrate — adaptive speculative decoding for Apple Silicon, measured honestly" src="./assets/hero-light.svg?v=2" width="100%">
 </picture>
 
 <p>
